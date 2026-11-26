@@ -125,4 +125,5 @@ def run_seed(seed: Path, output: Path) -> None:
         sys.setprofile(previous)
     assert tuple(cases) == PROBES
     assert len(seen) == 59
-    output.write_text(json.dumps(cases), encoding="utf-8")
+    with output.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(cases))

@@ -42,7 +42,8 @@ def main() -> None:
         message = "upgrade verdict disagrees with the verified base histories"
         raise RuntimeError(message)
     pending = path.with_name("verdict.pending")
-    pending.write_text(json.dumps(verdict) + "\n", encoding="utf-8")
+    with pending.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(verdict) + "\n")
     pending.replace(path.with_name("verdict.json"))
 
 

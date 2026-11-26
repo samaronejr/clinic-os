@@ -16,6 +16,7 @@ from psycopg import sql
 
 from ops.testing.migration_upgrade_ai_intent import declared_ai_tables
 from ops.testing.migration_upgrade_ai_retained import retained_checks
+from ops.testing.migration_upgrade_custody import write_replacing
 from ops.testing.migration_upgrade_wave_h_floor import preserved
 
 if TYPE_CHECKING:
@@ -450,7 +451,5 @@ def verify_ai(markers: Mapping[str, object], *, required: bool) -> list[str]:
         if not passed:
             failures.append("AI upgrade assertion failed: " + name)
     report = Path(os.environ["UPGRADE_SEED_FILE"]).with_name("ai-assertions.json")
-    report.write_text(
-        json.dumps(assertions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    write_replacing(report, json.dumps(assertions, indent=2, sort_keys=True) + "\n")
     return failures

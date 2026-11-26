@@ -34,6 +34,7 @@ from apps.intake.models import Patient
 from django.db import connection
 
 from ops.testing.migration_upgrade_ai_verify import verify_ai
+from ops.testing.migration_upgrade_custody import write_replacing
 from ops.testing.migration_upgrade_fixture_oracle import check_fixtures
 from ops.testing.migration_upgrade_inbox_fixture import PARITY_STATES
 from ops.testing.migration_upgrade_mutation_sweep import verify_sweep_coverage
@@ -226,7 +227,8 @@ if failures:
             f"upgrade-check FAILED: {name}", file=sys.stderr
         )
     sys.exit(1)
-Path(os.environ["UPGRADE_VERIFIED_FILE"]).write_text(
+write_replacing(
+    Path(os.environ["UPGRADE_VERIFIED_FILE"]),
     json.dumps(
         {
             "schema_version": 1,
@@ -238,6 +240,5 @@ Path(os.environ["UPGRADE_VERIFIED_FILE"]).write_text(
         }
     )
     + "\n",
-    encoding="utf-8",
 )
 print("upgrade-check: all assertions passed")  # noqa: T201 - piped diagnostics

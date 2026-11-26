@@ -600,7 +600,7 @@ def main() -> int:
         if os.environ.get("CLINIC_DATA_MODE") != "synthetic":
             message = "full verifier differential only runs on synthetic rehearsals"
             raise RuntimeError(message)
-        base = Path(sys.argv[1]).resolve()
+        base = Path(sys.argv[1]).absolute()
         _check_base(base)
         _run(base, report, differences)
         assert report["probe_window_cases"] == 118
@@ -615,9 +615,10 @@ def main() -> int:
         report["base_reject_lane_pass_pairs"] = [
             row for row in differences if row["base_reject_lane_pass"] is True
         ]
-        Path(os.environ["UPGRADE_WAVE_H_REPORT"]).write_text(
-            json.dumps(report) + "\n", encoding="utf-8"
-        )
+        with Path(os.environ["UPGRADE_WAVE_H_REPORT"]).open(
+            "x", encoding="utf-8"
+        ) as stream:
+            stream.write(json.dumps(report) + "\n")
     return 1 if differences else 0
 
 
