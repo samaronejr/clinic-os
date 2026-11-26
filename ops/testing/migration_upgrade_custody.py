@@ -1,6 +1,7 @@
 """Create and use the rehearsal's private run directory only through its descriptor."""
 
 import os
+import posixpath
 import re
 import secrets
 import shutil
@@ -115,25 +116,95 @@ def require_empty(directory: str, expected: str) -> None:
         os.close(held)
 
 
-def check_tree(root: int, expected: str, children: dict[str, str]) -> None:
-    """Refuse a run directory that gained a link or lost a created child."""
+def _link_allowed(
+    relative: str, target: str, recorded: dict[str, str], mount: str
+) -> bool:
+    """Accept a link the run recorded, or one a package manager makes in its own tree.
+
+    uv links its cache entries to absolute paths inside the cache and its
+    interpreters to the installed Python; both are confined to those shapes.
+    """
+    if recorded.get(relative) == target:
+        return True
+    parts = PurePosixPath(relative).parts
+    venv = ".venv" in parts[:-1]
+    if not venv and parts[0] != "uv-cache":
+        return False
+    scope = "/".join(parts[: parts.index(".venv") + 1]) if venv else "uv-cache"
+    if target.startswith("/"):
+        inside = posixpath.normpath(target)
+        own = f"{mount}/{scope}"
+        return (bool(mount) and (inside == own or inside.startswith(own + "/"))) or (
+            re.fullmatch(r"python[0-9.]*", posixpath.basename(target)) is not None
+        )
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(relative), target))
+    return resolved == scope or resolved.startswith(scope + "/")
+
+
+def _census_entry(
+    directory: int,
+    prefix: str,
+    name: str,
+    expected: tuple[int, dict[str, str], dict[str, str], str],
+) -> tuple[int, str] | None:
+    """Judge one entry; return the directory to descend into, if any."""
+    root_device, children, recorded, mount = expected
+    relative = prefix + name
+    found = os.lstat(name, dir_fd=directory)
+    if found.st_dev != root_device:
+        message = f"private_tree_foreign_mount: {relative}"
+        raise RuntimeError(message)
+    if (
+        prefix == ""
+        and name in children
+        and (
+            not stat.S_ISDIR(found.st_mode)
+            or f"{found.st_dev}:{found.st_ino}" != children[name]
+        )
+    ):
+        message = f"private_tree_replaced: {name}"
+        raise RuntimeError(message)
+    if stat.S_ISDIR(found.st_mode):
+        return os.open(name, DIRECTORY_FLAGS, dir_fd=directory), relative + "/"
+    target = os.readlink(name, dir_fd=directory) if stat.S_ISLNK(found.st_mode) else ""
+    if (
+        stat.S_ISLNK(found.st_mode)
+        and not _link_allowed(relative, target, recorded, mount)
+    ) or not (stat.S_ISLNK(found.st_mode) or stat.S_ISREG(found.st_mode)):
+        message = f"private_tree_foreign_entry: {relative}"
+        raise RuntimeError(message)
+    return None
+
+
+def check_tree(
+    root: int,
+    expected: str,
+    children: dict[str, str],
+    links: dict[str, str] | None = None,
+    mount: str = "",
+) -> None:
+    """Census the whole run tree against what the run created.
+
+    Refuses a missing or replaced created child, any link the run did not
+    record, any entry on another device, and any non-regular file.
+    """
     _require_directory(root, expected)
-    seen = set()
-    with os.scandir(root) as entries:
-        for entry in entries:
-            identity = os.lstat(entry.name, dir_fd=root)
-            if stat.S_ISLNK(identity.st_mode):
-                message = f"private_tree_foreign_entry: {entry.name}"
-                raise RuntimeError(message)
-            if entry.name in children:
-                seen.add(entry.name)
-                if (
-                    not stat.S_ISDIR(identity.st_mode)
-                    or f"{identity.st_dev}:{identity.st_ino}" != children[entry.name]
-                ):
-                    message = f"private_tree_replaced: {entry.name}"
-                    raise RuntimeError(message)
-    if seen != set(children):
+    judged = (os.fstat(root).st_dev, children, links or {}, mount)
+    pending = [(os.dup(root), "")]
+    top_level: set[str] = set()
+    while pending:
+        directory, prefix = pending.pop()
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if prefix == "":
+                        top_level.add(entry.name)
+                    descend = _census_entry(directory, prefix, entry.name, judged)
+                    if descend is not None:
+                        pending.append(descend)
+        finally:
+            os.close(directory)
+    if not set(children) <= top_level:
         message = "private_tree_missing_entry"
         raise RuntimeError(message)
 
@@ -141,8 +212,9 @@ def check_tree(root: int, expected: str, children: dict[str, str]) -> None:
 class _Extractor:
     """Unpack a tar stream into a directory this run created, never by name."""
 
-    def __init__(self, top: int) -> None:
+    def __init__(self, top: int, links: dict[str, str]) -> None:
         self.top = top
+        self.links = links
         self.created = {self._key(os.fstat(top))}
 
     @staticmethod
@@ -177,6 +249,7 @@ class _Extractor:
             member.name.startswith("/")
             or ".." in PurePosixPath(member.name).parts
             or not member.name.strip("./")
+            or any(c in member.name + member.linkname for c in "\t\n")
         ):
             message = f"private_extract_unsafe_member: {member.name}"
             raise RuntimeError(message)
@@ -206,6 +279,7 @@ class _Extractor:
                 self.created.add(
                     self._key(os.lstat(parts[-1], dir_fd=parent)),
                 )
+                self.links[posixpath.join(*parts)] = member.linkname
             else:
                 message = f"private_extract_unsupported_member: {member.name}"
                 raise RuntimeError(message)
@@ -234,8 +308,18 @@ class _Extractor:
             raise RuntimeError(message)
 
 
-def extract_owned(root: int, expected: str, name: str, stream: IO[bytes]) -> str:
-    """Create ``name`` fresh and unpack a tar stream into it; return its identity."""
+def extract_owned(
+    root: int,
+    expected: str,
+    name: str,
+    stream: IO[bytes],
+    links: dict[str, str] | None = None,
+) -> str:
+    """Create ``name`` fresh and unpack a tar stream into it; return its identity.
+
+    The links the archive carried are added to ``links`` by path under ``name``.
+    """
+    members: dict[str, str] = {}
     _require_directory(root, expected)
     _require_child_name(name)
     # Opening the stream waits for the first header, so the subdirectory is
@@ -244,11 +328,13 @@ def extract_owned(root: int, expected: str, name: str, stream: IO[bytes]) -> str
         os.mkdir(name, PRIVATE_MODE, dir_fd=root)
         top = os.open(name, DIRECTORY_FLAGS, dir_fd=root)
         try:
-            extractor = _Extractor(top)
+            extractor = _Extractor(top, members)
             dest = os.path.realpath(f"/proc/self/fd/{top}")
             for member in archive:
                 extractor.add(archive, member, dest)
             extractor.verify()
+            if links is not None:
+                links.update({f"{name}/{rel}": to for rel, to in members.items()})
             return _identity(top)
         finally:
             os.close(top)
@@ -276,19 +362,29 @@ def _main(arguments: list[str]) -> None:
             identity = mkdir_owned(int(arguments[1]), arguments[2], child)
             sys.stdout.write(f"{child} {identity}\n")
     elif command == "extract":
+        links: dict[str, str] = {}
         identity = extract_owned(
-            int(arguments[1]), arguments[2], arguments[3], sys.stdin.buffer
+            int(arguments[1]), arguments[2], arguments[3], sys.stdin.buffer, links
         )
         sys.stdout.write(f"{arguments[3]} {identity}\n")
+        for rel, target in links.items():
+            sys.stdout.write(f"link\t{rel}\t{target}\n")
     elif command == "symlink":
         symlink_owned(arguments[1], arguments[2], arguments[3], arguments[4])
     elif command == "empty":
         require_empty(arguments[1], arguments[2])
     elif command == "check":
+        extra = ("link:", "mount:")
+        recorded = [
+            a[5:].split("\t", 1) for a in arguments[3:] if a.startswith("link:")
+        ]
+        mounts = [a[6:] for a in arguments[3:] if a.startswith("mount:")]
         check_tree(
             int(arguments[1]),
             arguments[2],
-            dict(item.split("=", 1) for item in arguments[3:]),
+            dict(a.split("=", 1) for a in arguments[3:] if not a.startswith(extra)),
+            dict(recorded),
+            mounts[0] if mounts else "",
         )
     else:
         create(command)

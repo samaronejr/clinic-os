@@ -46,7 +46,7 @@ upgrade_dsn() {
 readonly lock_source_dsn="${LOCKS_DATABASE_URL:?LOCKS_DATABASE_URL required}"
 
 psql_super() {
-    docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
+    sandboxed docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
         -e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
         -e CLINIC_SUPER_PASSWORD -e CLINIC_LOCK_PASSWORD \
         "$POSTGRES_CONTAINER" \
@@ -82,8 +82,18 @@ remember_open_file() {
     owned_paths["$1"]="$identity:$run_nonce"
 }
 
+# Every child runs with the host read-only and the private run directory as the
+# only writable mount, so a link planted under a name it follows cannot reach a
+# writable foreign inode. The held descriptors name the run directory's entries.
+declare -a sandbox_entries=()
+
+sandboxed() {
+    python3 -I "$project_root/ops/testing/migration_upgrade_sandbox.py" \
+        "$$" "${run_fd:--}" "${run_name:--}" "${sandbox_entries[@]}" -- "$@"
+}
+
 write_private_key() {
-    python3 "$project_root/ops/testing/migration_upgrade_kek.py" "${1:-}"
+    sandboxed python3 "$project_root/ops/testing/migration_upgrade_kek.py" "${1:-}"
 }
 
 require_run_identity() {
@@ -104,6 +114,7 @@ mkdir_private_child() {
 }
 
 declare -A run_entries=()
+declare -A run_links=()
 
 hold_private_dir() {
     local held
@@ -113,6 +124,7 @@ hold_private_dir() {
         exit 1
     fi
     run_entries["$1"]="$2"
+    sandbox_entries+=("$held:$1")
     printf -v "$3" '%s' "/proc/$$/fd/$held"
 }
 
@@ -127,6 +139,10 @@ guard_private_tree() {
     for entry_name in "${!run_entries[@]}"; do
         entry_list+=("$entry_name=${run_entries[$entry_name]}")
     done
+    for entry_name in "${!run_links[@]}"; do
+        entry_list+=("link:$entry_name"$'\t'"${run_links[$entry_name]}")
+    done
+    entry_list+=("mount:/dev/shm/$run_name")
     if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
         check "$run_fd" "$run_identity" "${entry_list[@]}"; then
         setup_detail=private_tree_foreign_entry
@@ -427,7 +443,7 @@ guard_private_tree
 # git writes only to the pipe; the extractor creates every entry through the
 # run directory descriptor, so no destination name exists for a link to hijack.
 exec {wrapper_stdin}<&0
-coproc ARCHIVE { exec git -C "$project_root" archive --format=tar "$base_sha" <&"$wrapper_stdin"; }
+coproc ARCHIVE { sandboxed git -C "$project_root" archive --format=tar "$base_sha" <&"$wrapper_stdin"; }
 archive_process=$ARCHIVE_PID
 archive_in="${ARCHIVE[0]}"
 if ! extracted="$(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
@@ -439,18 +455,26 @@ if ! extracted="$(python3 -I "$project_root/ops/testing/migration_upgrade_custod
 fi
 eval "exec ${archive_in}<&-"
 wait "$archive_process"
-hold_private_dir base "${extracted##* }" base_worktree
+base_line="${extracted%%$'\n'*}"
+while IFS=$'\t' read -r link_kind link_path link_target; do
+    if [[ "$link_kind" == link ]]; then
+        run_links["$link_path"]="$link_target"
+    fi
+done <<< "$extracted"
+hold_private_dir base "${base_line##* }" base_worktree
 
 echo "== sync base dependencies =="
 guard_private_tree
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
     # Reuse is safe only for an identical locked environment. This keeps local
     # constrained-host rehearsals from rebuilding the same environment.
-    cmp "$base_worktree/uv.lock" "$project_root/uv.lock"
+    sandboxed cmp "$base_worktree/uv.lock" "$project_root/uv.lock"
+    venv_target="$(realpath "$project_root/.venv")"
     python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" symlink \
-        "$base_worktree" "${run_entries[base]}" .venv "$(realpath "$project_root/.venv")"
+        "$base_worktree" "${run_entries[base]}" .venv "$venv_target"
+    run_links[base/.venv]="$venv_target"
 else
-    (cd "$base_worktree" && uv sync --locked --all-groups --quiet)
+    (cd "$base_worktree" && sandboxed uv sync --locked --all-groups --quiet)
 fi
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
@@ -472,7 +496,7 @@ base_manage() (
     export CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file
     export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
     export CLINIC_SECRET_DIR="$secret_dir" DJANGO_SETTINGS_MODULE=config.settings.base
-    uv run --frozen --no-sync --no-env-file python manage.py "$@"
+    sandboxed uv run --frozen --no-sync --no-env-file python manage.py "$@"
 )
 
 create_and_migrate_base() {
@@ -525,16 +549,18 @@ rehearse_wave_h() {
     guard_private_tree
     python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
         empty "$wave_tree" "${run_entries[wave]}"
-    git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
-    git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
-    if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
+    sandboxed git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
+    sandboxed git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
+    if sandboxed cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
+        venv_target="$(realpath "$project_root/.venv")"
         python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" symlink \
-            "$wave_tree" "${run_entries[wave]}" .venv "$(realpath "$project_root/.venv")"
+            "$wave_tree" "${run_entries[wave]}" .venv "$venv_target"
+        run_links[wave/.venv]="$venv_target"
     else
-        (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
+        (cd "$wave_tree" && sandboxed uv sync --locked --all-groups --quiet)
     fi
-    test "$(git -C "$wave_tree" rev-parse HEAD)" = "$wave_sha"
-    test -z "$(git -C "$wave_tree" status --porcelain --untracked-files=no)"
+    test "$(sandboxed git -C "$wave_tree" rev-parse HEAD)" = "$wave_sha"
+    test -z "$(sandboxed git -C "$wave_tree" status --porcelain --untracked-files=no)"
 
     differential_stage=reference_migration
     local owner_dsn app_dsn secret_dir="$native"
@@ -551,11 +577,11 @@ rehearse_wave_h() {
     differential_stage=reference_probe_case_generation
     collect_probe_cases "$wave_tree" "$native/seed.json" "$native/probes.json"
     differential_stage=reference_forward_migration
-    (cd "$wave_tree" && env APP_DATABASE_URL="$owner_dsn" \
+    (cd "$wave_tree" && sandboxed env APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
         CLINIC_SECRET_DIR="$native" DJANGO_SETTINGS_MODULE=config.settings.base \
         uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
-    (cd "$wave_tree" && env APP_DATABASE_URL="$owner_dsn" \
+    (cd "$wave_tree" && sandboxed env APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file \
         CLINIC_SECRET_DIR="$native" DJANGO_SETTINGS_MODULE=config.settings.base \
         uv run --frozen --no-sync --no-env-file python manage.py provision_comms_mac_secrets)
@@ -563,7 +589,7 @@ rehearse_wave_h() {
         UPGRADE_ADMIN_DATABASE_URL="$(upgrade_dsn "$TEST_SUPERUSER_DATABASE_URL" "$wave_db")" \
         CLINIC_SECRET_DIR="$native" UPGRADE_SEED_FILE="$native/seed.json" \
         UPGRADE_WAVE_H_PROBE_CASES="$native/probes.json" \
-        python3 - "$native/environment.json" <<'PYEOF'
+        sandboxed python3 - "$native/environment.json" <<'PYEOF'
 import json
 import os
 import sys
@@ -609,7 +635,7 @@ echo "== install the envelope boundary, then issue the tenant DEK =="
 if ! psql_super "$upgrade_db" -tAc \
     "SELECT 1 FROM clinic_app.django_migrations WHERE app='tenancy' AND name LIKE '0003%'" \
     | grep -q 1; then
-    (cd "$project_root" && env \
+    (cd "$project_root" && sandboxed env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
         DJANGO_SETTINGS_MODULE="config.settings.base" \
@@ -617,7 +643,7 @@ if ! psql_super "$upgrade_db" -tAc \
     # A tenant DEK must exist before the protected-field backfill can
     # encrypt existing plaintext rows; issue it through the supported
     # owner boundary.
-    (cd "$project_root" && env \
+    (cd "$project_root" && sandboxed env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
         CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -647,7 +673,7 @@ PYEOF
 fi
 
 echo "== migrate forward with the candidate =="
-(cd "$project_root" && env \
+(cd "$project_root" && sandboxed env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -658,7 +684,7 @@ echo "== migrate forward with the candidate =="
 # Provider MAC secrets enter the database only by COPY from the secret store.
 guard_private_tree
 echo "== provision provider MAC secrets =="
-(cd "$project_root" && env \
+(cd "$project_root" && sandboxed env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -669,7 +695,7 @@ echo "== provision provider MAC secrets =="
 guard_private_tree
 echo "== verify preserved data, transform, and boundaries =="
 export UPGRADE_AI_COVERAGE="$secret_dir/ai-coverage.json"
-(cd "$project_root" && env \
+(cd "$project_root" && sandboxed env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
@@ -688,7 +714,7 @@ if [ -n "$differential" ]; then
     guard_private_tree
 differential_stage=verifier_differential
     differential_rc=0
-    (cd "$project_root" && env \
+    (cd "$project_root" && sandboxed env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
         CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -710,7 +736,7 @@ differential_stage=verifier_differential
 fi
 guard_private_tree
 differential_stage=clean_forward_verification
-(cd "$project_root" && env \
+(cd "$project_root" && sandboxed env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -724,19 +750,21 @@ differential_stage=clean_forward_verification
         < "$project_root/ops/testing/migration_upgrade_verify.py")
 
 echo "== confirm no migration drift =="
-(cd "$project_root" && env \
+(cd "$project_root" && sandboxed env \
     APP_DATABASE_URL="$owner_dsn" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
 
-python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
+guard_private_tree
+sandboxed python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
     "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json" \
     "$UPGRADE_DATABASE_RECREATED"
 # Check the published artifact, not just the writer's in-memory object.
-if ! cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; then
+if ! sandboxed cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; then
     echo "published upgrade verdict disagrees with the verified base histories" >&2
     exit 1
 fi
+guard_private_tree
 differential_stage=verdict_publication
 publish_verdict PASS
 echo "migration-upgrade: PASS"

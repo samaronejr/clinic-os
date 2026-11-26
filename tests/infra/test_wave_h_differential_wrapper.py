@@ -219,15 +219,16 @@ def _old_pass(tmp_path: Path) -> Path:
 
 def test_wrapper_terminates_with_current_interrupted_verdict(tmp_path: Path) -> None:
     receipt = _old_pass(tmp_path)
-    bin_dir = _tools(tmp_path, missing="git")
-    git = shutil.which("git")
-    assert git is not None
-    shim = bin_dir / "git"
+    # Children run in a sandbox that cannot see the wrapper, so the signal comes
+    # from a trusted-wrapper command: the check right after run-dir creation.
+    bin_dir = _tools(tmp_path, missing="stat")
+    stat = shutil.which("stat")
+    assert stat is not None
+    shim = bin_dir / "stat"
     shim.write_text(
         "#!/bin/bash\n"
-        'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
-        '    kill -TERM "$PPID"; exit 0\nfi\n'
-        f'exec {git} "$@"\n',
+        'if [[ "$*" == *"%d:%i:%a"* ]]; then kill -TERM "$PPID"; fi\n'
+        f'exec {stat} "$@"\n',
         encoding="utf-8",
     )
     shim.chmod(0o700)
@@ -352,7 +353,7 @@ def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
         '    base="${UPGRADE_PRIVATE_RUN_DIR:-${6%/*}}/base"\n'
         '    path="${base%/*}/tenant-kek.secret"\n'
         "    (set -o noclobber; printf 'unowned key marker\\n' > \"$path\") || exit 1\n"
-        '    stat -c "%d:%i" "$path" > "$RUNNER_TEMP/marker-identity"\n'
+        '    echo "marker-identity $(stat -c %d:%i "$path")" >&2\n'
         "    exit\n"
         "fi\n"
         f'exec {git} "$@"\n',
@@ -367,7 +368,7 @@ def test_wrapper_does_not_adopt_preplaced_private_key(tmp_path: Path) -> None:
     result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
 
     assert result.returncode != 0, result.stdout
-    assert (tmp_path / "marker-identity").is_file()
+    assert "marker-identity " in result.stdout
     assert "private_output_exists: tenant-kek.secret" in result.stdout
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
 
@@ -750,3 +751,129 @@ def test_environment_link_never_follows_a_planted_name(
     assert result.returncode == 1, result.stdout
     assert "FileExistsError" in result.stdout
     _assert_untouched(directory, marker, before)
+
+
+def _mid_run_shim(
+    bin_dir: Path,
+    tool: str,
+    plant: tuple[str, tuple[str, ...]],
+    scratch: Path,
+    *,
+    passthrough: bool,
+) -> None:
+    """Plant links when the trigger holds, then write through them like a follower."""
+    trigger, links = plant
+    real = shutil.which(tool)
+    assert real is not None
+    plants = ""
+    for relative in links:
+        directory = relative.endswith(".venv")
+        target = "$FOREIGN_DIR" if directory else "$FOREIGN_FILE"
+        attempt = f"$RUN/{relative}/pwned" if directory else f"$RUN/{relative}"
+        plants += (
+            f'    ln -s -- "{target}" "$RUN/{relative}"\n'
+            f'    if {{ echo PWN >> "{attempt}"; }} 2>/dev/null; then\n'
+            f"        echo WRITE_ESCAPED {relative} >&2\n"
+            "    else\n"
+            f"        echo WRITE_BLOCKED {relative} >&2\n"
+            "    fi\n"
+        )
+    shim = bin_dir / tool
+    shim.unlink()
+    shim.write_text(
+        "#!/bin/bash\n"
+        'RUN="$UPGRADE_PRIVATE_RUN_DIR"\n'
+        f'FOREIGN_DIR="{scratch / "foreign-dir"}"\n'
+        f'FOREIGN_FILE="{scratch / "foreign-file"}"\n'
+        f"if [[ {trigger} ]]; then\n"
+        f"{plants}"
+        "fi\n" + (f'exec {real} "$@"\n' if passthrough else "exit 0\n"),
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+
+MID_RUN_PLANTS = {
+    "uv_sync": ("uv", '"$1" == sync', ("uv-cache/.lock", "base/.venv")),
+    "verifier": (
+        "uv",
+        '"$*" == *wave_h_entry_differential.py*',
+        ("verified.json", "differential.json"),
+    ),
+    "native": ("git", '"$3" == checkout', ("native/seed.json", "native/probes.json")),
+}
+
+
+@pytest.mark.parametrize("stage", MID_RUN_PLANTS)
+def test_links_planted_mid_run_never_reach_a_foreign_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    monkeypatch.delenv("UPGRADE_REUSE_ENVIRONMENT", raising=False)
+    # docker is a no-op here, so the connection strings only need to parse.
+    for key in (
+        "MIGRATION_DATABASE_URL",
+        "APP_DATABASE_URL",
+        "TEST_SUPERUSER_DATABASE_URL",
+        "LOCKS_DATABASE_URL",
+    ):
+        monkeypatch.setenv(key, "postgresql://role:secret@127.0.0.1:1/clinic")
+    for key, value in (
+        ("POSTGRES_CONTAINER", "unused"),
+        ("POSTGRES_PASSWORD", "unused"),
+        ("POSTGRES_USER", "postgres"),
+        ("POSTGRES_PORT", "5432"),
+    ):
+        monkeypatch.setenv(key, value)
+    tool, trigger, links = MID_RUN_PLANTS[stage]
+    directory, marker, before = _foreign(tmp_path)
+    bin_dir = _tools(tmp_path)
+    (bin_dir / "docker").unlink()
+    (bin_dir / "docker").symlink_to("/bin/true")
+    if tool != "uv":
+        stand_in = bin_dir / "uv"
+        stand_in.unlink()
+        stand_in.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+        stand_in.chmod(0o700)
+    _mid_run_shim(bin_dir, tool, (trigger, links), tmp_path, passthrough=tool == "git")
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode != 0, result.stdout
+    _assert_untouched(directory, marker, before)
+    assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
+    for relative in links:
+        assert f"WRITE_BLOCKED {relative}" in result.stdout, result.stdout[-3000:]
+    assert "private_tree_foreign_entry" in result.stdout, result.stdout[-3000:]
+    published = tmp_path / "migration-upgrade" / "verdict.json"
+    if published.is_file():
+        verdict = json.loads(published.read_text(encoding="utf-8"))
+        assert verdict["result"] != "PASS"
+
+
+@requires_postgres
+def test_a_tampered_run_tree_never_produces_a_pass(tmp_path: Path) -> None:
+    """A link made after the last verifier ran still fails the census before PASS."""
+    bin_dir = _tools(tmp_path)
+    real = shutil.which("uv")
+    assert real is not None
+    shim = bin_dir / "uv"
+    shim.unlink()
+    shim.write_text(
+        "#!/bin/bash\n"
+        f'{real} "$@"\nstatus=$?\n'
+        'if [[ "$*" == *"manage.py makemigrations"* ]]; then\n'
+        '    run="$UPGRADE_PRIVATE_RUN_DIR"\n'
+        '    ln -s -- "$run/tmp" "$run/native/leftover"\n'
+        "fi\n"
+        "exit $status\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode != 0, result.stdout[-3000:]
+    assert "private_tree_foreign_entry: native/leftover" in result.stdout
+    published = tmp_path / "migration-upgrade" / "verdict.json"
+    verdict = json.loads(published.read_text(encoding="utf-8"))
+    assert verdict["result"] == "FAIL"
