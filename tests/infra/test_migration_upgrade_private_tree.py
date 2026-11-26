@@ -16,6 +16,7 @@ from ops.testing.migration_upgrade_custody import (
     write_replacing,
 )
 
+MOUNT = "/dev/shm/migration-upgrade-secrets.x"  # noqa: S108 - sandbox mount name
 DIRECTORY = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
@@ -192,7 +193,7 @@ def test_tree_check_refuses_links_and_replaced_children(
 
     (root / "tmp").rename(root / "tmp.moved")
     (root / "tmp").symlink_to(directory)
-    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+    with pytest.raises(RuntimeError, match="private_tree_replaced"):
         check_tree(descriptor, identity, created)
 
     (root / "tmp").unlink()
@@ -225,3 +226,90 @@ def test_replaced_receipt_never_writes_through_a_foreign_link(
     assert not receipt.is_symlink()
     assert receipt.read_text(encoding="utf-8") == "{}\n"
     assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")] == []
+
+
+def _census_tree(root: Path, descriptor: int, identity: str) -> dict[str, str]:
+    return {"base": mkdir_owned(descriptor, identity, "base")}
+
+
+@pytest.mark.parametrize(
+    "plant",
+    [
+        pytest.param(("base/inner", "/etc/passwd", None), id="nested-absolute"),
+        pytest.param(("base/inner", "../tmp", None), id="nested-relative"),
+        pytest.param(("base/.venv", "/etc", None), id="unrecorded-venv-link"),
+        pytest.param(("base/inner", "fifo", "fifo"), id="special-file"),
+    ],
+)
+def test_census_refuses_anything_the_run_did_not_create(
+    run: tuple[Path, int, str], plant: tuple[str, str, str | None]
+) -> None:
+    root, descriptor, identity = run
+    created = _census_tree(root, descriptor, identity)
+    check_tree(descriptor, identity, created)
+    name, target, special = plant
+    if special == "fifo":
+        os.mkfifo(root / name)
+    else:
+        (root / name).symlink_to(target)
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+        check_tree(descriptor, identity, created)
+
+
+def test_census_accepts_recorded_and_package_manager_links(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity = run
+    created = _census_tree(root, descriptor, identity)
+    (root / "base/.venv/bin").mkdir(parents=True)
+    (root / "uv-cache").mkdir()
+    (root / "base/alias").symlink_to("tool.sh")
+    (root / "base/.venv/bin/python").symlink_to("/usr/bin/python3.12")
+    (root / "base/.venv/lib64").symlink_to("lib")
+    (root / "uv-cache/shared").symlink_to("../uv-cache/other")
+    mount = MOUNT
+    (root / "uv-cache/entry").symlink_to(f"{mount}/uv-cache/archive-v0/abc")
+    (root / "uv-cache/shim").symlink_to("/opt/python/bin/python3.13")
+    created["uv-cache"] = _identity(root / "uv-cache")
+
+    check_tree(descriptor, identity, created, {"base/alias": "tool.sh"}, mount)
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+        check_tree(descriptor, identity, created, {}, mount)
+
+
+@pytest.mark.parametrize(
+    ("name", "target"),
+    [
+        (".venv/bin/python", "/home/foreign/payload"),
+        (".venv/lib64", "../../outside"),
+        ("../uv-cache/shared", "/home/foreign/payload"),
+        ("../uv-cache/shared", f"{MOUNT}/native/seed"),
+    ],
+)
+def test_census_refuses_package_manager_links_that_leave_their_tree(
+    run: tuple[Path, int, str], name: str, target: str
+) -> None:
+    root, descriptor, identity = run
+    created = _census_tree(root, descriptor, identity)
+    (root / "base/.venv/bin").mkdir(parents=True)
+    (root / "uv-cache").mkdir()
+    created["uv-cache"] = _identity(root / "uv-cache")
+    (root / "base" / name).symlink_to(target)
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+        check_tree(descriptor, identity, created, {}, MOUNT)
+
+
+def test_extraction_reports_the_links_the_archive_carried(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity = run
+    links: dict[str, str] = {}
+    stream = _tar(_directory("pkg"), _link("pkg/alias", "tool.sh"), _file("top.txt"))
+
+    extract_owned(descriptor, identity, "base", stream, links)
+
+    assert links == {"base/pkg/alias": "tool.sh"}
+    check_tree(descriptor, identity, {"base": _identity(root / "base")}, links)
