@@ -343,7 +343,7 @@ def test_child_output_receipt_controls_cleanup(tmp_path: Path, collision: bool) 
         '    base="${UPGRADE_PRIVATE_RUN_DIR:-${6%/*}}/base"\n'
         '    output="${base%/*}/ai-assertions.json"\n'
         + ('    printf "unowned\\n" > "$output"\n' if collision else "")
-        + """    python3 - "$output" <<'PY'
+        + """    python3 - "$output" >&2 <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -436,7 +436,7 @@ def test_wrapper_removes_planted_tree_without_following_links(tmp_path: Path) ->
         '    mkdir "$UPGRADE_PRIVATE_RUN_DIR/planted" || exit 2\n'
         '    printf "planted\\n" > "$UPGRADE_PRIVATE_RUN_DIR/planted/marker"\n'
         '    ln -s -- "$RUNNER_TEMP/outside" "$UPGRADE_PRIVATE_RUN_DIR/planted/link"\n'
-        "    echo planted-tree\n"
+        "    echo planted-tree >&2\n"
         "    exit 1\n"
         f'fi\nexec {git} "$@"\n',
         encoding="utf-8",
@@ -500,7 +500,7 @@ def test_concurrent_wrapper_with_same_ci_identity_cannot_certify(
     shim.write_text(
         "#!/bin/bash\n"
         'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
-        "    echo staging; read -r _; exit 1\nfi\n"
+        "    echo staging >&2; read -r _; exit 1\nfi\n"
         f'exec {git} "$@"\n',
         encoding="utf-8",
     )
@@ -612,3 +612,99 @@ def test_wrapper_preserves_stale_pending_directory_and_publishes_failure(
     assert verdict["reason"] == "stale_seed_pending"
     assert not (receipt / "base").exists()
     assert not list(tmp_path.glob("migration-upgrade-secrets.*"))
+
+
+def _plant_shim(
+    bin_dir: Path, tool: str, stage: str, plant: str, scratch: Path
+) -> None:
+    """Run ``plant`` inside the run directory the moment ``stage`` is reached."""
+    real = shutil.which(tool)
+    assert real is not None
+    shim = bin_dir / tool
+    shim.unlink()
+    shim.write_text(
+        "#!/bin/bash\n"
+        f"if [[ {stage} ]]; then\n"
+        '    RUN="$UPGRADE_PRIVATE_RUN_DIR"\n'
+        f'    FOREIGN_DIR="{scratch / "foreign-dir"}"\n'
+        f'    FOREIGN_FILE="{scratch / "foreign-file"}"\n'
+        f"    {plant}\n"
+        "fi\n"
+        f'exec {real} "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o700)
+
+
+def _foreign(tmp_path: Path) -> tuple[Path, Path, os.stat_result]:
+    directory = tmp_path / "foreign-dir"
+    directory.mkdir()
+    marker = tmp_path / "foreign-file"
+    marker.write_bytes(b"foreign\n")
+    return directory, marker, marker.stat()
+
+
+def _assert_untouched(directory: Path, marker: Path, before: os.stat_result) -> None:
+    assert list(directory.iterdir()) == []
+    assert (marker.stat().st_ino, marker.read_bytes()) == (
+        before.st_ino,
+        b"foreign\n",
+    )
+
+
+PLANTED_NAMES = {
+    "archive_output_link": ('ln -s -- "$FOREIGN_FILE" "$RUN/base.tar"', None),
+    "extraction_root_directory_link": (
+        'ln -s -- "$FOREIGN_DIR" "$RUN/base"',
+        "private_extract_failed",
+    ),
+    "extraction_root_file_link": (
+        'ln -s -- "$FOREIGN_FILE" "$RUN/base"',
+        "private_extract_failed",
+    ),
+    "tmp_replaced_by_link": (
+        'mv -- "$RUN/tmp" "$RUN/tmp.moved"; ln -s -- "$FOREIGN_DIR" "$RUN/tmp"',
+        "private_tree_foreign_entry",
+    ),
+    "uv_cache_replaced_by_link": (
+        'mv -- "$RUN/uv-cache" "$RUN/uv-cache.moved"; '
+        'ln -s -- "$FOREIGN_DIR" "$RUN/uv-cache"',
+        "private_tree_foreign_entry",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", PLANTED_NAMES)
+def test_run_children_never_follow_a_planted_name(tmp_path: Path, name: str) -> None:
+    plant, refusal = PLANTED_NAMES[name]
+    directory, marker, before = _foreign(tmp_path)
+    bin_dir = _tools(tmp_path)
+    _plant_shim(bin_dir, "git", '"$3" == archive', plant, tmp_path)
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == 1, result.stdout
+    _assert_untouched(directory, marker, before)
+    if refusal:
+        assert f"setup: {refusal}" in result.stdout
+
+
+def test_environment_link_never_follows_a_planted_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("UPGRADE_REUSE_ENVIRONMENT", "1")
+    directory, marker, before = _foreign(tmp_path)
+    bin_dir = _tools(tmp_path)
+    _plant_shim(
+        bin_dir,
+        "cmp",
+        '-d "$UPGRADE_PRIVATE_RUN_DIR/base"',
+        'ln -s -- "$FOREIGN_DIR" "$RUN/base/.venv"',
+        tmp_path,
+    )
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode == 1, result.stdout
+    assert "FileExistsError" in result.stdout
+    _assert_untouched(directory, marker, before)

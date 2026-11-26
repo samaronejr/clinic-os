@@ -102,6 +102,37 @@ mkdir_private_child() {
         mkdir "$run_fd" "$run_identity" "$@"
 }
 
+declare -A run_entries=()
+
+hold_private_dir() {
+    local held
+    exec {held}< "$secret_dir/$1"
+    if [[ "$(stat -Lc '%d:%i' -- "/proc/$$/fd/$held")" != "$2" ]]; then
+        setup_detail=private_child_replaced
+        exit 1
+    fi
+    run_entries["$1"]="$2"
+    printf -v "$3" '%s' "/proc/$$/fd/$held"
+}
+
+make_private_dir() {
+    local made
+    made="$(mkdir_private_child "$1")" || return 1
+    hold_private_dir "$1" "${made##* }" "$2"
+}
+
+guard_private_tree() {
+    local entry_name entry_list=()
+    for entry_name in "${!run_entries[@]}"; do
+        entry_list+=("$entry_name=${run_entries[$entry_name]}")
+    done
+    if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+        check "$run_fd" "$run_identity" "${entry_list[@]}"; then
+        setup_detail=private_tree_foreign_entry
+        exit 1
+    fi
+}
+
 remove_run_tree() {
     require_run_identity || return 1
     # The kernel reclaims the anonymous mount at last close. There is no
@@ -381,24 +412,42 @@ wait "$custody_process"
 run_identity="$created_identity"
 export UPGRADE_PRIVATE_RUN_IDENTITY="$run_identity"
 refuse_public_private_entries
-readonly base_worktree="$secret_dir/base" seed_file="$secret_dir/seed.json"
-wave_tree="$secret_dir/wave"
+readonly seed_file="$secret_dir/seed.json"
+base_worktree=""
+wave_tree=""
+native_dir=""
 differential_report="$secret_dir/differential.json"
 export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
-mkdir_private_child tmp uv-cache
-export TMPDIR="$secret_dir/tmp" UV_CACHE_DIR="$secret_dir/uv-cache"
+make_private_dir tmp tmp_dir
+make_private_dir uv-cache cache_dir
+export TMPDIR="$tmp_dir" UV_CACHE_DIR="$cache_dir"
 echo "== check out base $base_sha =="
-mkdir_private_child base
-git -C "$project_root" archive --format=tar --output="$secret_dir/base.tar" "$base_sha"
-tar -xf "$secret_dir/base.tar" -C "$base_worktree"
-unlink_private_child base.tar 0
+guard_private_tree
+# git writes only to the pipe; the extractor creates every entry through the
+# run directory descriptor, so no destination name exists for a link to hijack.
+exec {wrapper_stdin}<&0
+coproc ARCHIVE { exec git -C "$project_root" archive --format=tar "$base_sha" <&"$wrapper_stdin"; }
+archive_process=$ARCHIVE_PID
+archive_in="${ARCHIVE[0]}"
+if ! extracted="$(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+    extract "$run_fd" "$run_identity" base <&"$archive_in")"; then
+    eval "exec ${archive_in}<&-"
+    wait "$archive_process" || true
+    setup_detail=private_extract_failed
+    exit 1
+fi
+eval "exec ${archive_in}<&-"
+wait "$archive_process"
+hold_private_dir base "${extracted##* }" base_worktree
 
 echo "== sync base dependencies =="
+guard_private_tree
 if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
     # Reuse is safe only for an identical locked environment. This keeps local
     # constrained-host rehearsals from rebuilding the same environment.
     cmp "$base_worktree/uv.lock" "$project_root/uv.lock"
-    ln -s "$(realpath "$project_root/.venv")" "$base_worktree/.venv"
+    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" symlink \
+        "$base_worktree" "${run_entries[base]}" .venv "$(realpath "$project_root/.venv")"
 else
     (cd "$base_worktree" && uv sync --locked --all-groups --quiet)
 fi
@@ -416,6 +465,7 @@ export UPGRADE_ROWS_HELPER="$project_root/ops/testing/migration_upgrade_rows.py"
 export UPGRADE_DATABASE_RECREATED=0
 
 base_manage() (
+    guard_private_tree
     cd "$base_worktree"
     export APP_DATABASE_URL="$owner_dsn"
     export CLINIC_DATA_MODE=synthetic CLINIC_SECRET_BACKEND=synthetic-file
@@ -465,14 +515,19 @@ runpy.run_path(os.environ["UPGRADE_PROBE_DRIVER"])["run_seed"](
 
 rehearse_wave_h() {
     local wave_sha=4f8d2454987ca1d083ead53a7501126d647a89bc
-    local native="$secret_dir/native"
-    mkdir_private_child native
+    make_private_dir native native_dir
+    local native="$native_dir"
     write_private_key "$native"
     differential_stage=reference_worktree
+    make_private_dir wave wave_tree
+    guard_private_tree
+    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+        empty "$wave_tree" "${run_entries[wave]}"
     git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
     git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
     if cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
-        ln -s "$(realpath "$project_root/.venv")" "$wave_tree/.venv"
+        python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" symlink \
+            "$wave_tree" "${run_entries[wave]}" .venv "$(realpath "$project_root/.venv")"
     else
         (cd "$wave_tree" && uv sync --locked --all-groups --quiet)
     fi
@@ -507,7 +562,8 @@ from pathlib import Path
 
 keys = ("APP_DATABASE_URL", "UPGRADE_APP_DATABASE_URL", "UPGRADE_ADMIN_DATABASE_URL",
         "CLINIC_SECRET_DIR", "UPGRADE_SEED_FILE", "UPGRADE_WAVE_H_PROBE_CASES")
-Path(sys.argv[1]).write_text(json.dumps({key: os.environ[key] for key in keys}))
+with Path(sys.argv[1]).open("x", encoding="utf-8") as stream:
+    stream.write(json.dumps({key: os.environ[key] for key in keys}))
 PYEOF
 }
 
@@ -589,6 +645,7 @@ echo "== migrate forward with the candidate =="
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
 
+guard_private_tree
 echo "== verify preserved data, transform, and boundaries =="
 export UPGRADE_AI_COVERAGE="$secret_dir/ai-coverage.json"
 (cd "$project_root" && env \
@@ -603,10 +660,12 @@ from ops.testing.migration_upgrade_rewrite_graph import (
 )
 validate_default_declarations()
 validate_transform_declarations()
-Path(os.environ["UPGRADE_AI_COVERAGE"]).write_text(json.dumps(sorted(altered_ai_tables())))')
+with Path(os.environ["UPGRADE_AI_COVERAGE"]).open("x", encoding="utf-8") as stream:
+    stream.write(json.dumps(sorted(altered_ai_tables())))')
 if [ -n "$differential" ]; then
     rehearse_wave_h
-    differential_stage=verifier_differential
+    guard_private_tree
+differential_stage=verifier_differential
     differential_rc=0
     (cd "$project_root" && env \
         APP_DATABASE_URL="$owner_dsn" \
@@ -618,7 +677,7 @@ if [ -n "$differential" ]; then
         UPGRADE_BASE_SHA="$base_sha" \
         UPGRADE_VERIFIED_FILE="$secret_dir/verified.json" \
         UPGRADE_SEED_FILE="$seed_file" \
-        UPGRADE_WAVE_H_NATIVE_ENV="$secret_dir/native/environment.json" \
+        UPGRADE_WAVE_H_NATIVE_ENV="$native_dir/environment.json" \
         UPGRADE_WAVE_H_PROBE_CASES="$secret_dir/lane-probes.json" \
         UPGRADE_WAVE_H_REPORT="$differential_report" \
         uv run --frozen --no-sync --no-env-file python \
@@ -627,6 +686,7 @@ if [ -n "$differential" ]; then
         exit "$differential_rc"
     fi
 fi
+guard_private_tree
 differential_stage=clean_forward_verification
 (cd "$project_root" && env \
     APP_DATABASE_URL="$owner_dsn" \
