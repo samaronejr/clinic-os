@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from http import HTTPStatus
@@ -2769,26 +2770,14 @@ def test_a_kill_before_any_default_statement_of_a_send_only_stalls_it(
     graph = world.graph
     world.receive(world.message_body(text="Oi"))
     conversation = _only_conversation(graph).pk
-    # Derive the statements one clean send issues on the default connection.
-    recorded: list[str] = []
-
-    def record(
-        execute: Callable[..., object], sql: str, params: object, *rest: object
-    ) -> object:
-        recorded.append(sql)
-        return execute(sql, params, *rest)
-
-    clean = _send(graph, conversation, body="Olá").message_id
-    calls: list[UUID] = []
-    assert _dispatch_counted(graph, clean, calls, record) == "succeeded"
-    _sent_once(graph, clean, calls)
+    recorded = _default_statements(graph, conversation)
     total = len(recorded)
     record_property("default_statements", total)
     assert total > 0
     killer = _DefaultKiller(app_database_url)
     for index in range(total):
         message_id = _send(graph, conversation, body=f"Olá {index}").message_id
-        calls = []
+        calls: list[UUID] = []
         counter = [0]
 
         def strike(
@@ -2881,4 +2870,230 @@ def test_a_row_claim_lost_after_its_commit_sends_once_on_redelivery(
     assert attempt.status == "in_progress"
     # Redelivery returns the provably unsent attempt to pending and sends once.
     assert _dispatch_counted(graph, message_id, calls) == "succeeded"
+    _sent_once(graph, message_id, calls)
+
+
+def _default_statements(graph: RbacGraph, conversation: UUID) -> list[str]:
+    """Derive the statements one clean send issues on the default connection."""
+    recorded: list[str] = []
+
+    def record(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        recorded.append(sql)
+        return execute(sql, params, *rest)
+
+    clean = _send(graph, conversation, body="Olá").message_id
+    calls: list[UUID] = []
+    assert _dispatch_counted(graph, clean, calls, record) == "succeeded"
+    _sent_once(graph, clean, calls)
+    return recorded
+
+
+class _DefaultCanceller:
+    """A second clinic_app session cancelling a default statement mid-execution.
+
+    It holds an advisory lock; at the chosen position the worker's backend
+    blocks on that lock, and once ``pg_stat_activity`` shows the lock wait (a
+    lock-state check, no timer) the session runs ``pg_cancel_backend``, so the
+    statement fails with 57014 while executing.
+    """
+
+    _KEY = "clinic-test-default-cancel"
+
+    def __init__(self, app_url: str) -> None:
+        self._app_url, self.cancels, self.left = app_url, 0, 0
+        self._holder = psycopg.connect(app_url, autocommit=True)
+        self._holder.execute(
+            "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtext(%s))", [self._KEY]
+        )
+
+    def close(self) -> None:
+        self._holder.close()
+
+    def _cancel_when_waiting(self, pid: int) -> None:
+        with psycopg.connect(self._app_url, autocommit=True) as watcher:
+            for _check in range(100_000):  # bounded by a count, not a timer
+                row = watcher.execute(
+                    "SELECT wait_event_type FROM pg_catalog.pg_stat_activity"
+                    " WHERE pid = %s",
+                    [pid],
+                ).fetchone()
+                if row == ("Lock",):
+                    cancelled = watcher.execute(
+                        "SELECT pg_catalog.pg_cancel_backend(%s)", [pid]
+                    ).fetchone()
+                    assert cancelled == (True,)
+                    self.cancels += 1
+                    return
+        pytest.fail("the default backend never waited on the cancel lock")
+
+    def cancel_mid(self, execute: Callable[..., object], *rest: object) -> None:
+        """Block the default backend on the held lock and cancel it there."""
+        connection.ensure_connection()
+        assert connection.connection is not None
+        watcher = threading.Thread(
+            target=self._cancel_when_waiting,
+            args=(connection.connection.info.backend_pid,),
+        )
+        watcher.start()
+        try:
+            execute(
+                "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtext(%s))",
+                [self._KEY],
+                *rest,
+            )
+        finally:
+            watcher.join()
+
+
+@pytest.mark.parametrize("times", [1, 3], ids=["once", "repeated"])
+def test_a_cancel_during_any_default_statement_of_a_send_only_stalls_it(
+    world: InboxWorld,
+    app_database_url: str,
+    times: int,
+    record_property: Callable[[str, object], None],
+) -> None:
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    conversation = _only_conversation(graph).pk
+    recorded = _default_statements(graph, conversation)
+    total = len(recorded)
+    assert total > 0
+    canceller = _DefaultCanceller(app_database_url)
+    try:
+        for index in range(total):
+            message_id = _send(graph, conversation, body=f"Olá {index}").message_id
+            calls: list[UUID] = []
+            counter = [0]
+
+            def strike(
+                execute: Callable[..., object],
+                sql: str,
+                params: object,
+                *rest: object,
+                at: int = index,
+                tally: list[int] = counter,
+            ) -> object:
+                position = tally[0]
+                tally[0] += 1
+                if position == at:
+                    canceller.left = times - 1
+                    canceller.cancel_mid(execute, *rest)
+                elif position > at and canceller.left > 0:
+                    # The re-run is cancelled too, until ``times`` is spent.
+                    canceller.left -= 1
+                    canceller.cancel_mid(execute, *rest)
+                return execute(sql, params, *rest)
+
+            before = canceller.cancels
+            outcome = _dispatch_counted(graph, message_id, calls, strike)
+            # A re-run step meets every armed cancel; a cancel before the
+            # operation lock ends the dispatch unsent instead (redelivered).
+            spent = canceller.cancels - before
+            assert (
+                (spent == times) if outcome == "succeeded" else (1 <= spent <= times)
+            ), (
+                index,
+                recorded[index][:80],
+                spent,
+            )
+            if outcome != "succeeded":
+                assert calls == [], (index, recorded[index][:80])
+                outcome = _dispatch_counted(graph, message_id, calls)
+            assert outcome == "succeeded", (index, recorded[index][:80])
+            _sent_once(graph, message_id, calls)
+    finally:
+        canceller.close()
+    record_property("default_statements", total)
+    record_property("cancels", canceller.cancels)
+
+
+def test_every_default_statement_of_a_send_passes_the_recorded_cursor(
+    world: InboxWorld,
+) -> None:
+    """Nothing reaches the database on the default connection unrecorded.
+
+    Every driver-level statement on the worker's default connection during a
+    send must run inside Django's cursor (whose execute wrappers the derived
+    harness uses): a raw psycopg connection or cursor bypassing it fails here.
+    """
+    graph = world.graph
+    world.receive(world.message_body(text="Oi"))
+    message_id = _send(graph, _only_conversation(graph).pk, body="Olá").message_id
+    inside: list[bool] = []
+    recorded: list[str] = []
+    bypassed: list[str] = []
+    driver: list[str] = []
+
+    def record(
+        execute: Callable[..., object], sql: str, params: object, *rest: object
+    ) -> object:
+        recorded.append(sql)
+        inside.append(True)
+        try:
+            return execute(sql, params, *rest)
+        finally:
+            inside.pop()
+
+    def watch(name: str, original: Callable[..., object]) -> Callable[..., object]:
+        def watched(
+            target: object, query: object, *args: object, **kw: object
+        ) -> object:
+            raw = connection.connection
+            owner = getattr(target, "connection", target)
+            frames = [f.name for f in traceback.extract_stack()]
+            # Django's connect-time setup runs before any execute wrapper; a
+            # failure there is a connect failure, classified as lost.
+            setup = "init_connection_state" in frames
+            if sending and raw is not None and owner is raw and not setup:
+                driver.append(str(query))
+                if not inside:
+                    bypassed.append(f"{name}: {str(query)[:60]} via {frames[-6:-1]}")
+            return original(target, query, *args, **kw)
+
+        return watched
+
+    # Armed when the send starts, after the test's own runtime login check.
+    sending: list[bool] = []
+    resolve = integration._resolve_scope
+
+    def start(operation_id: UUID) -> object:
+        sending.append(True)
+        return resolve(operation_id)
+
+    calls: list[UUID] = []
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.object(integration, "_resolve_scope", start))
+        cursor, raw = psycopg.Cursor, psycopg.Connection
+        stack.enter_context(
+            patch.object(cursor, "execute", watch("Cursor.execute", cursor.execute))
+        )
+        stack.enter_context(
+            patch.object(
+                cursor, "executemany", watch("Cursor.executemany", cursor.executemany)
+            )
+        )
+        stack.enter_context(
+            patch.object(cursor, "copy", watch("Cursor.copy", cursor.copy))
+        )
+        stack.enter_context(
+            patch.object(cursor, "stream", watch("Cursor.stream", cursor.stream))
+        )
+        stack.enter_context(
+            patch.object(raw, "execute", watch("Connection.execute", raw.execute))
+        )
+        assert _dispatch_counted(graph, message_id, calls, record) == "succeeded"
+        assert recorded
+        assert bypassed == []
+        assert len(driver) == len(recorded)
+        # The guard itself catches a raw driver statement on that connection.
+        connection.ensure_connection()
+        assert connection.connection is not None
+        connection.connection.execute("SELECT 1")
+        # psycopg's Connection.execute runs Cursor.execute: both are seen.
+        assert [entry.split(" via ")[0] for entry in bypassed] == [
+            "Connection.execute: SELECT 1",
+            "Cursor.execute: SELECT 1",
+        ]
     _sent_once(graph, message_id, calls)

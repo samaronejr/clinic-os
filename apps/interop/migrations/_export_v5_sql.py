@@ -9,7 +9,8 @@ organization's own access history, so v5 exports it at organization scope with
 no omitted column. Identity 0052 applies this reader right after it creates the
 table, so its populated-rollback refusal covers v5 too; 0052 grants
 clinic_resolver SELECT on the table, so v5 changes no privilege. The reverse is
-the v4 reader. This module never changes either.
+the v4 reader. The provider MAC secret table (comms 0019) is excluded as a
+credential, which adds no reader branch.
 """
 
 from typing import Final
@@ -24,7 +25,10 @@ DELEGATE_EXPORTS: Final = (
     ("identity_delegateaccessevent", "id", "uuid", (), "organization"),
 )
 EXPORT_V5: Final = tuple(sorted((*EXPORT_V4, *DELEGATE_EXPORTS)))
-EXCLUDED_V5: Final = EXCLUDED_V4
+# The provider MAC secrets (comms 0019) are restored with the organization but
+# are credentials: excluded from every export, so no reader branch changes.
+MAC_SECRET_EXCLUSIONS: Final = {"comms_providermacsecret": "credential"}
+EXCLUDED_V5: Final = EXCLUDED_V4 | MAC_SECRET_EXCLUSIONS
 
 # Plain calls and comprehensions only, so the clock census decodes this SQL.
 _BRANCHES_V5: Final = "\n".join(

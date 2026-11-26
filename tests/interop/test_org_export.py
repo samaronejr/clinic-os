@@ -64,6 +64,7 @@ from apps.interop.migrations._export_v5_sql import (
     DELEGATE_EXPORTS,
     EXCLUDED_V5,
     EXPORT_V5,
+    MAC_SECRET_EXCLUSIONS,
 )
 from apps.interop.migrations._interop_sql import TABLES
 from apps.interop.models import RndsSubmission
@@ -153,6 +154,7 @@ IMPORT_RELATIONS = {*IMPORT_RLS_TABLES, "interop_hiddenenrollment"}
 ENTERPRISE_RELATIONS = set(ENTERPRISE_TABLES)
 RNDS_RELATIONS = set(RNDS_RLS_TABLES)
 DELEGATE_RELATIONS = {"identity_delegateaccessevent"}
+MAC_RELATIONS = {"comms_providermacsecret"}
 
 
 @pytest.fixture
@@ -326,6 +328,7 @@ def test_export_v1_stays_frozen_and_v2_adds_exactly_the_import_relations() -> No
         - ENTERPRISE_RELATIONS
         - RNDS_RELATIONS
         - DELEGATE_RELATIONS
+        - MAC_RELATIONS
     )
     assert {entry[0] for entry in IMPORT_EXPORTS} | set(IMPORT_EXCLUSIONS) == (
         IMPORT_RELATIONS
@@ -345,6 +348,7 @@ def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -
         - ENTERPRISE_RELATIONS
         - RNDS_RELATIONS
         - DELEGATE_RELATIONS
+        - MAC_RELATIONS
     )
     assert {entry[0] for entry in ENTERPRISE_EXPORTS} | set(ENTERPRISE_EXCLUSIONS) == (
         ENTERPRISE_RELATIONS
@@ -360,7 +364,10 @@ def test_export_v2_stays_frozen_and_v3_adds_exactly_the_enterprise_relations() -
 def test_export_v3_stays_frozen_and_v4_adds_exactly_the_rnds_submission_log() -> None:
     v3 = {entry[0] for entry in EXPORT_V3} | set(EXCLUDED_V3)
     assert v3 == (
-        set(restore_contract.DOMAIN_RELATIONS) - RNDS_RELATIONS - DELEGATE_RELATIONS
+        set(restore_contract.DOMAIN_RELATIONS)
+        - RNDS_RELATIONS
+        - DELEGATE_RELATIONS
+        - MAC_RELATIONS
     )
     assert {entry[0] for entry in RNDS_EXPORTS} == RNDS_RELATIONS
     assert tuple(sorted((*EXPORT_V3, *RNDS_EXPORTS))) == EXPORT_V4
@@ -373,10 +380,14 @@ def test_export_v3_stays_frozen_and_v4_adds_exactly_the_rnds_submission_log() ->
 
 def test_export_v4_stays_frozen_and_v5_adds_exactly_the_delegate_access_log() -> None:
     v4 = {entry[0] for entry in EXPORT_V4} | set(EXCLUDED_V4)
-    assert v4 == set(restore_contract.DOMAIN_RELATIONS) - DELEGATE_RELATIONS
+    assert (
+        v4
+        == set(restore_contract.DOMAIN_RELATIONS) - DELEGATE_RELATIONS - MAC_RELATIONS
+    )
     assert {entry[0] for entry in DELEGATE_EXPORTS} == DELEGATE_RELATIONS
     assert tuple(sorted((*EXPORT_V4, *DELEGATE_EXPORTS))) == EXPORT_V5
-    assert EXCLUDED_V5 == EXCLUDED_V4
+    assert EXCLUDED_V5 == {**EXCLUDED_V4, **MAC_SECRET_EXCLUSIONS}
+    assert set(MAC_SECRET_EXCLUSIONS) == MAC_RELATIONS
     # Identity 0052 replaces only the reader's branches; its reverse is v4's.
     assert _export_v5_sql.FORWARD.count("requested_relation='") == len(EXPORT_V5)
     assert _export_v5_sql.REVERSE == _export_v4_sql.FORWARD

@@ -450,11 +450,12 @@ call re-runs the decision under the held lock. A lock session lost before the
 provider call returns a provably unsent attempt to pending, and leaves one
 whose permit it held for the staff hold (docs/RUNBOOK.md).
 
-Losing the worker's default connection (any clinic_app session may terminate
-it, and crashes, network loss or a server restart drop it too) stalls at
-worst; never holds a send or makes a second call. Every operational,
-interface, connection, operator-intervention or idle-in-transaction failure
-on it counts as lost: each step re-runs from durable state on a fresh
+Losing the worker's default connection, or having a statement on it
+cancelled (any clinic_app session may terminate it or cancel its query, a
+statement_timeout cancels it, and crashes, network loss or a server restart
+drop it too), stalls at worst; never holds a send or makes a second call. Every operational,
+interface, connection, operator-intervention, query-cancel (57014) or
+idle-in-transaction failure on it counts as lost (the step rolls back): each step re-runs from durable state on a fresh
 connection (connect timeout, no sleeps) for as long as the lock session is
 alive and still holds its lock. Before the provider call the decision is
 re-run without taking the permit twice; after it, the outcome is recorded on

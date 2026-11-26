@@ -1164,13 +1164,14 @@ def _connection_failure(link: BaseException) -> bool:
 
     With a SQLSTATE: class 08 (connection exception), 57P01-57P05 (admin
     shutdown, crash shutdown, cannot connect now, database dropped, idle
-    session timeout) or 25P03 (idle in transaction). Without one: a
+    session timeout), 25P03 (idle in transaction) or 57014 (query canceled,
+    e.g. pg_cancel_backend or statement_timeout: the step rolled back). Without one: a
     driver-level operational or interface error (the client lost the server)
     or Django's "connection already closed".
     """
     state = str(getattr(link, "sqlstate", "") or "")
     if state:
-        return state.startswith(("08", "57P0")) or state == "25P03"
+        return state.startswith(("08", "57P0")) or state in {"25P03", "57014"}
     return isinstance(
         link, InterfaceError | psycopg.OperationalError | psycopg.InterfaceError
     )
