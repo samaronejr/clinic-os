@@ -62,6 +62,7 @@ server-state tests/renewal/test_action_operations.py::test_service_principal_can
 server-state tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write
 # Exercises deliberate cluster-global role/parameter ACL drift and its revoke.
 server-state tests/infra/test_role_family_posture.py
+server-state tests/infra/test_routine_policy.py
 # Unqualified maintenance also analyzes shared pg_database/pg_authid. It resets
 # n_mod_since_analyze and increments manual analyze_count, invalidating the
 # parallel phase's committed-write window even when automatic counters stay put.

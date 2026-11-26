@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from ops.testing import renewal_runner
+from ops.testing.runtime_paths import runtime_directory
 
 from database_urls import database_url_for_name
 
@@ -20,9 +22,17 @@ def migrated_pg_cluster(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[renewal_runner.ProvisionedDatabase]:
     """Each consuming module starts with its own freshly migrated cluster."""
+    with migrated_lease(tmp_path_factory.getbasetemp()) as db:
+        yield db
+
+
+@contextmanager
+def migrated_lease(root: Path) -> Iterator[renewal_runner.ProvisionedDatabase]:
     repo = Path(__file__).resolve().parents[1]
-    logs = tmp_path_factory.mktemp("posture-migrations")
-    with renewal_runner._provision_database(repo, f"posture_{uuid4().hex}") as db:
+    with (
+        runtime_directory(root, purpose="posture-migrations") as logs,
+        renewal_runner._provision_database(repo, f"posture_{uuid4().hex}") as db,
+    ):
         renewal_runner._create_test_database(repo, db)
         renewal_runner._migrate(repo, db.owner_dsn, logs / "primary.log")
         renewal_runner._migrate(

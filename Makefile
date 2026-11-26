@@ -146,6 +146,7 @@ db-bootstrap: db-inputs
 		-f - < ops/db/bootstrap.sql
 
 db-posture: db-inputs
+	@if [ "$${CLINIC_POSTURE_TIMING:-}" = 1 ]; then printf '%s\n' 'posture-launch uv' >&2; fi
 	@$(UV) run python ops/db/posture.py
 
 migrate:

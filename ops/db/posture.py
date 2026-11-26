@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
+import time
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Final
@@ -11,6 +14,14 @@ from typing import Final
 import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
+
+
+def _stage(label: str, ordinal: int = 0) -> None:
+    """Opt-in diagnostic: fixed stages, target ordinal and monotonic time only."""
+    if os.environ.get("CLINIC_POSTURE_TIMING") == "1":
+        sys.stderr.write(f"posture-stage {label} {ordinal} {time.monotonic_ns()}\n")
+        sys.stderr.flush()
+
 
 POSTURE_QUERY: Final = """
 SELECT
@@ -112,6 +123,10 @@ SAFE_ROLE_FAMILY_QUERY: Final = ROLE_FAMILY + sql.SQL("""
 SELECT NOT EXISTS (
     SELECT FROM family JOIN pg_catalog.pg_roles AS r USING (oid)
     WHERE r.rolsuper
+       OR (family.login <> 'clinic_owner' AND (
+           r.oid = 'pg_database_owner'::regrole
+           OR EXISTS (SELECT FROM pg_namespace ns WHERE ns.nspowner = r.oid)
+       ))
        OR r.rolcreaterole
        OR r.rolreplication
        OR (r.rolbypassrls AND NOT (
@@ -119,7 +134,9 @@ SELECT NOT EXISTS (
            AND NOT r.rolcanlogin
        ))
        OR r.rolname IN ('pg_read_server_files', 'pg_write_server_files',
-                        'pg_execute_server_program', 'pg_signal_backend')
+                        'pg_execute_server_program', 'pg_signal_backend',
+                        'pg_read_all_stats', 'pg_read_all_settings',
+                        'pg_stat_scan_tables')
        OR pg_catalog.pg_has_role('pg_monitor', r.oid, 'MEMBER')
        OR EXISTS (
            SELECT FROM pg_catalog.pg_parameter_acl AS p
@@ -140,11 +157,17 @@ RESTRICTED_ROUTINES: Final = ROLE_FAMILY + sql.SQL("""
     SELECT p.*, n.nspname, n.nspowner, p.oid::regprocedure::text AS signature,
            ARRAY(SELECT a.grantee
                  FROM aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
-                 WHERE a.privilege_type = 'EXECUTE') AS executors
+                 WHERE a.privilege_type = 'EXECUTE') AS executors,
+           ARRAY(SELECT pg_get_userbyid(a.grantee)::text
+                 FROM aclexplode(p.proacl) a
+                 WHERE a.privilege_type = 'EXECUTE' AND a.is_grantable) AS delegators
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     LEFT JOIN pg_init_privs i ON i.classoid = 'pg_proc'::regclass
                              AND i.objoid = p.oid AND i.objsubid = 0
-    WHERE (n.nspname = 'pg_catalog'
+    WHERE (n.nspname = 'clinic_app'
+           AND (NOT EXISTS (SELECT FROM extension_members e WHERE e.oid = p.oid)
+                OR p.oid::regprocedure::text = ANY(%s)))
+       OR ((n.nspname = 'pg_catalog'
            OR n.oid IN (SELECT extnamespace FROM pg_extension)
            OR n.oid IN (SELECT pronamespace FROM extension_members))
       AND (
@@ -156,10 +179,10 @@ RESTRICTED_ROUTINES: Final = ROLE_FAMILY + sql.SQL("""
               SELECT FROM aclexplode(i.initprivs) a
               WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
           ))
-          OR (n.nspname = 'clinic_app' AND p.oid::regprocedure::text = ANY(%s))
-      )
+      ))
 )
-SELECT p.signature, pg_get_userbyid(p.proowner),
+SELECT p.signature, pg_get_function_identity_arguments(p.oid),
+       pg_get_userbyid(p.proowner),
        CASE WHEN p.nspname = 'clinic_app' AND p.prokind = 'f'
              AND p.nspowner = 'clinic_owner'::regrole
              AND (SELECT datdba FROM pg_database WHERE datname = current_database())
@@ -170,7 +193,7 @@ SELECT p.signature, pg_get_userbyid(p.proowner),
        ARRAY(SELECT CASE WHEN grantee = 0 THEN 'PUBLIC'
                          ELSE pg_get_userbyid(grantee)::text END
              FROM unnest(p.executors) AS grantee),
-       reached.logins
+       p.delegators, reached.logins
 FROM restricted p CROSS JOIN LATERAL (
     SELECT array_agg(DISTINCT family.login) AS logins
     FROM family JOIN pg_roles role USING (oid)
@@ -229,56 +252,154 @@ WHERE d.datname = current_database() AND r.rolname = current_user
 """
 
 
-@cache
-def _routine_exceptions() -> dict[tuple[str, str, str], set[str]]:
-    exceptions = {}
-    path = Path(__file__).with_name("routine-exceptions.tsv")
+@dataclass(frozen=True, slots=True)
+class _ExecutePolicy:
+    grantees: frozenset[str]
+    grantable: frozenset[str]
+
+
+_AUDIENCES: Final = frozenset((*PINNED_ROLES, "clinic_resolver", "clinic_super"))
+type _RoutineKey = tuple[str, str, str, str]
+
+
+def _valid_identity(signature: str, arguments: str) -> bool:
+    match = re.fullmatch(r"clinic_app\.[a-z_][a-z_0-9]*\(([^()]*)\)", signature)
+    if match is None:
+        return False
+    types = match[1].split(",") if match[1] else []
+    params = arguments.split(", ") if arguments else []
+    if len(types) != len(params):
+        return False
+    # The reviewed PG16 manifest uses unquoted built-in type names (including
+    # arrays and multiword names). A new spelling requires explicit review.
+    return all(
+        re.fullmatch(r"[a-z][a-z0-9_]*(?: [a-z][a-z0-9_]*)*(?:\[\])*", typ)
+        and re.fullmatch(r"(?:[a-z_][a-z_0-9]* )?" + re.escape(typ), param)
+        for typ, param in zip(types, params, strict=True)
+    )
+
+
+def _parse_audience(field: str) -> frozenset[str]:
+    parts = field.split(",")
+    values = frozenset(parts)
+    if len(parts) != len(values) or not values <= _AUDIENCES:
+        message = "invalid routine audience"
+        raise ValueError(message)
+    return values
+
+
+def _read_policy(path: Path) -> dict[_RoutineKey, _ExecutePolicy]:
+    exceptions: dict[_RoutineKey, _ExecutePolicy] = {}
+    signatures: set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("#"):
             continue
-        signature, owner, digest, roles, _reason = line.split("\t")
-        exceptions[signature, owner, digest] = set(roles.split(","))
+        (
+            signature,
+            arguments,
+            owner,
+            digest,
+            roles,
+            options,
+            created,
+            named,
+            defined,
+            reason,
+        ) = line.split("\t")
+        grantees = _parse_audience(roles)
+        grantable = _parse_audience(options) if options != "-" else frozenset()
+        if (
+            signature in signatures
+            or not _valid_identity(signature, arguments)
+            or owner not in {"clinic_owner", "clinic_resolver"}
+            or not re.fullmatch("[0-9a-f]{64}", digest)
+            or not grantable <= grantees
+            or not all(
+                re.fullmatch(r"[a-z_]+/[0-9]{4}_[a-z0-9_]+", m)
+                for m in (created, named, defined)
+            )
+            or not reason.strip()
+        ):
+            message = "invalid or ambiguous routine exception"
+            raise ValueError(message)
+        signatures.add(signature)
+        exceptions[signature, arguments, owner, digest] = _ExecutePolicy(
+            grantees, grantable
+        )
+    if not exceptions:
+        message = "empty routine policy"
+        raise ValueError(message)
     return exceptions
 
 
+@cache
+def _routine_exceptions() -> dict[_RoutineKey, _ExecutePolicy]:
+    return _read_policy(Path(__file__).with_name("routine-exceptions.tsv"))
+
+
 def _role_authority_safe(connection: psycopg.Connection, logins: list[str]) -> bool:
+    _stage("role-query")
     if connection.execute(SAFE_ROLE_FAMILY_QUERY, (logins,)).fetchone() != (True,):
         return False
+    return _routine_authority_safe(connection, logins)
+
+
+def _routine_authority_safe(connection: psycopg.Connection, logins: list[str]) -> bool:
+    _stage("routine-query")
     allowed = _routine_exceptions()
-    signatures = [key[0] for key in allowed]
-    for signature, owner, digest, grantees, roots in connection.execute(
-        RESTRICTED_ROUTINES, (logins, signatures)
-    ):
-        roles = allowed.get((signature, owner, digest))
-        if not roles or not set(grantees) <= roles:
+    for (
+        signature,
+        arguments,
+        owner,
+        digest,
+        grantees,
+        grantable,
+        roots,
+    ) in connection.execute(RESTRICTED_ROUTINES, (logins, [key[0] for key in allowed])):
+        policy = allowed.get((signature, arguments, owner, digest))
+        if (
+            not policy
+            or not set(grantees) <= policy.grantees
+            or not set(grantable) <= policy.grantable
+        ):
             return False
         # The migration owner deliberately reaches the app and resolver. A
         # runtime login must not acquire an owner-only helper along that path.
         for root in roots:
             audience = "clinic_agent" if root.startswith("clinic_agent_") else root
-            if audience != "clinic_owner" and audience not in roles:
+            if audience != "clinic_owner" and audience not in policy.grantees:
                 return False
     return True
 
 
+@dataclass(frozen=True, slots=True)
+class _Inventory:
+    host: str
+    hostaddr: str
+    port: int
+    primary: str
+    targets: list[tuple[str, int]]
+
+
 def _inspect_database_authority(
-    primary: psycopg.Connection, database_url: str, password: str, logins: list[str]
+    inventory: _Inventory, database_url: str, password: str, logins: list[str]
 ) -> bool:
     """Inspect every database with the independent catalog-only login."""
-    targets = primary.execute(ALL_DATABASES).fetchall()
-    if not any(name == primary.info.dbname for name, _ in targets):
+    if not any(name == inventory.primary for name, _ in inventory.targets):
         return False
-    for name, oid in targets:
+    for ordinal, (name, oid) in enumerate(inventory.targets, start=1):
+        _stage("peer-connect", ordinal)
         with psycopg.connect(
             database_url,
             user="clinic_posture",
             password=password,
             dbname=name,
-            host=primary.info.host,
-            hostaddr=primary.info.hostaddr,
-            port=primary.info.port,
+            host=inventory.host,
+            hostaddr=inventory.hostaddr,
+            port=inventory.port,
             connect_timeout=5,
         ) as peer:
+            _stage("peer-query", ordinal)
             peer.execute(READ_ONLY)
             peer.execute(CATALOG_PATH)
             if peer.execute(DATABASE_IDENTITY).fetchone() != (
@@ -288,6 +409,7 @@ def _inspect_database_authority(
                 oid,
             ) or not _role_authority_safe(peer, logins):
                 return False
+        _stage("peer-finished", ordinal)
     return True
 
 
@@ -307,7 +429,9 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
         if not required_settings:
             return False
         database_name = connection_settings["dbname"]
+        _stage("primary-connect")
         with psycopg.connect(database_url, connect_timeout=5) as connection:
+            _stage("primary-query")
             connection.execute(READ_ONLY)
             effective = connection.execute(EFFECTIVE_SETTINGS_QUERY).fetchone()
             connection.execute(CATALOG_PATH)
@@ -319,8 +443,12 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
                 name for (name,) in connection.execute(MACHINE_LOGINS_QUERY).fetchall()
             ]
             logins = [*PINNED_ROLES, *machines]
-            safe_roles = _inspect_database_authority(
-                connection, database_url, password, logins
+            inventory = _Inventory(
+                connection.info.host,
+                connection.info.hostaddr,
+                connection.info.port,
+                connection.info.dbname,
+                connection.execute(ALL_DATABASES).fetchall(),
             )
             role_settings = [
                 (role, scoped, list(settings))
@@ -328,6 +456,12 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
                     ROLE_SETTINGS_QUERY, (logins,)
                 ).fetchall()
             ]
+        # The primary role has a 15s idle-in-transaction limit. Its complete
+        # read-only snapshot is finished; never leave it open during peer I/O.
+        _stage("primary-closed")
+        safe_roles = _inspect_database_authority(
+            inventory, database_url, password, logins
+        )
     except (psycopg.Error, ValueError, OSError):
         return False
     return (
@@ -345,6 +479,7 @@ def _verify_database_posture(database_url: str, test_database_name: str) -> bool
 
 
 def _main() -> int:
+    _stage("verifier-start")
     database_url = os.environ.get("APP_DATABASE_URL", "")
     test_database_name = os.environ.get("TEST_DATABASE_NAME", "")
     if not _verify_database_posture(database_url, test_database_name):

@@ -348,15 +348,43 @@ database trust boundary, not as proof against a superuser.
   Actual extension member namespaces are included, not just `extnamespace`.
   The gate checks effective access through the whole family, including the
   **local** edge from the current database's owner to `pg_database_owner`.
-  No native routine or extension member has an exception.
+  Runtime reachability of that owner role **itself** is forbidden, even
+  without another grant. Database ownership and ownership of *any* namespace
+  by a runtime-reachable role are checked in every target. Schema ownership
+  is an independent forbidden DDL capability, not a PostgreSQL membership
+  edge. Only the migration login may reach its intended owners. The scanner
+  closes the primary runtime transaction and connection after capturing the
+  authenticated endpoint, target inventory, configuration and login family,
+  before opening the first inspector peer. The endpoint and identity checks
+  remain in effect. No native routine or extension member has an exception.
 - The application schema also hosts extensions: migration-owned application
-  routines there are **not** exempt as a class. Each permitted overload in
-  `ops/db/routine-exceptions.tsv` records its owner, canonical PG16 definition
-  digest, maximum grantees and migration reason. Private migration/definer
-  helpers are not staff or machine exceptions. A new overload, a new grantee,
-  a replaced body, or membership exposing a private helper fails closed. Review
-  policy updates against the source migration; never generate approvals from the
-  database being inspected.
+  routines there are **not** exempt as a class. Every non-extension member
+  in `clinic_app` is protected independently of extension placement, initial
+  ACL and current PUBLIC access. Intended public extension routines still use
+  the extension policy. Exceptions use the exact OID-derived `regprocedure`
+  and `pg_get_function_identity_arguments(oid)`, owner and PG16 definition
+  digest. `ops/db/routine-exceptions.tsv` separates maximum EXECUTE grantees
+  from maximum grant-option grantees (`-` grants no delegation). A bare grant
+  is not authority to delegate. No current exception permits a grant option.
+  Private definer/migration helpers do not become staff or machine exceptions.
+  Unknown executable overloads, widened ACLs, changed definitions, ambiguous
+  policy rows, or exposure to an unintended runtime root fail closed.
+- Each exception cites creation of the surviving object, last installation of
+  its signature, and last definition. Audit these by observing the local OID
+  and its full identity after **each committed migration** in a clean replay;
+  renames are not new creations. The purpose distinguishes runtime callers,
+  internal definers and administrative grants (including restore-only
+  `clinic_super` on the exact `tenant_decrypt` overload). Never learn approval
+  from the installation under inspection.
+- The module-isolated handoff test runs the preceding populated migration
+  rehearsal, closes its clone, keeps that lease idle during an independent
+  fresh control, and sends the real Make/uv/verifier through the original
+  15-second deadline on the same cluster. Trace only fixed stages, monotonic
+  durations, backend counts/state/waits/transaction age/blocking, and process
+  scheduling counters; never SQL, connection strings or input values.
+  On deadline expiry, take a final observation and kill/reap the probe's
+  private process group. The trace locates observed waits; it does not infer
+  a historical lock or load cause from an aggregate run time.
 - Give the inspector `CONNECT` on restricted databases; do not grant runtime
   logins extra access for the check. On a stock PG16 cluster even a superuser
   cannot connect to `template0` while `datallowconn` is false. With an explicit

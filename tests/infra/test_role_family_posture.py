@@ -330,7 +330,7 @@ def test_unlisted_restricted_routine_in_extension_schema() -> None:
 
 
 @contextmanager
-def _reachable_machine() -> Iterator[tuple[str, str]]:
+def _reachable_machine(*, from_app: bool = True) -> Iterator[tuple[str, str]]:
     name = "clinic_agent_" + uuid4().hex
     machine = sql.Identifier(name)
     password = uuid4().hex
@@ -353,11 +353,12 @@ def _reachable_machine() -> Iterator[tuple[str, str]]:
                         machine, sql.Identifier(setting), sql.Literal(value)
                     )
                 )
-            admin.execute(
-                sql.SQL("GRANT {} TO clinic_app WITH INHERIT FALSE, SET TRUE").format(
-                    machine
+            if from_app:
+                admin.execute(
+                    sql.SQL(
+                        "GRANT {} TO clinic_app WITH INHERIT FALSE, SET TRUE"
+                    ).format(machine)
                 )
-            )
         try:
             yield name, password
         finally:
@@ -425,11 +426,6 @@ def test_reachable_database_owner_activates_local_grant() -> None:
                 sql.SQL("ALTER DATABASE {} OWNER TO {}").format(identifier, owner)
             )
             admin.execute(
-                sql.SQL("GRANT {} TO clinic_app WITH INHERIT FALSE, SET TRUE").format(
-                    owner
-                )
-            )
-            admin.execute(
                 sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(identifier)
             )
             admin.execute(
@@ -438,6 +434,15 @@ def test_reachable_database_owner_activates_local_grant() -> None:
                 )
             )
             assert _runtime_posture()
+            admin.execute(
+                sql.SQL("GRANT {} TO clinic_app WITH INHERIT FALSE, SET TRUE").format(
+                    owner
+                )
+            )
+            assert not _runtime_posture()  # Bare local ownership already denies.
+            secondary.execute("SET search_path = pg_catalog, pg_temp")
+            logins = list(posture.PINNED_ROLES)
+            assert posture._routine_authority_safe(secondary, logins)
             secondary.execute(
                 "GRANT EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) "
                 "TO pg_database_owner"
@@ -448,17 +453,84 @@ def test_reachable_database_owner_activates_local_grant() -> None:
                 " has_function_privilege(%s, 'pg_stat_file(text)', 'EXECUTE')",
                 (owner_name,),
             ).fetchone() == (False, True)
+            assert not posture._routine_authority_safe(secondary, logins)
             assert not _runtime_posture()
             secondary.execute(
                 "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) "
                 "FROM pg_database_owner"
             )
+            assert posture._routine_authority_safe(secondary, logins)
+            assert not _runtime_posture()
+            admin.execute(sql.SQL("REVOKE {} FROM clinic_app").format(owner))
             assert _runtime_posture()
         finally:
             admin.execute(
                 sql.SQL("ALTER DATABASE {} OWNER TO CURRENT_USER").format(identifier)
             )
             admin.execute(sql.SQL("DROP ROLE {}").format(owner))
+
+
+@pytest.mark.usefixtures("clean_posture_environment")
+@pytest.mark.parametrize("runtime", ["clinic_app", "clinic_agent"])
+def test_bare_database_ownership_denied_without_delegated_routine(runtime: str) -> None:
+    with _secondary() as (admin, name, identifier):
+        # Isolate the bare role from its stock ownership of the public schema.
+        # This is a new disposable database; the runtime gains no other object.
+        with psycopg.connect(
+            os.environ["TEST_SUPERUSER_DATABASE_URL"], dbname=name
+        ) as peer:
+            peer.execute("ALTER SCHEMA public OWNER TO CURRENT_USER")
+        assert _runtime_posture()
+        admin.execute(
+            sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
+                identifier, sql.Identifier(runtime)
+            )
+        )
+        try:
+            with psycopg.connect(
+                os.environ["TEST_SUPERUSER_DATABASE_URL"], dbname=name
+            ) as peer:
+                assert peer.execute(
+                    "SELECT pg_has_role(%s,'pg_database_owner','MEMBER')", (runtime,)
+                ).fetchone() == (True,)
+                assert peer.execute(
+                    "SELECT has_function_privilege(%s,'pg_stat_file(text)','EXECUTE')",
+                    (runtime,),
+                ).fetchone() == (False,)
+            assert not _runtime_posture()
+        finally:
+            admin.execute(
+                sql.SQL("ALTER DATABASE {} OWNER TO CURRENT_USER").format(identifier)
+            )
+        assert _runtime_posture()
+
+
+@pytest.mark.usefixtures("clean_posture_environment")
+def test_independent_machine_owner_is_refused() -> None:
+    with (
+        _reachable_machine(from_app=False) as (machine, _password),
+        _secondary() as (admin, name, identifier),
+    ):
+        with psycopg.connect(
+            os.environ["TEST_SUPERUSER_DATABASE_URL"], dbname=name
+        ) as peer:
+            peer.execute("ALTER SCHEMA public OWNER TO CURRENT_USER")
+        assert admin.execute(
+            "SELECT pg_has_role('clinic_app', %s, 'MEMBER')", (machine,)
+        ).fetchone() == (False,)
+        assert _runtime_posture()
+        admin.execute(
+            sql.SQL("ALTER DATABASE {} OWNER TO {}").format(
+                identifier, sql.Identifier(machine)
+            )
+        )
+        try:
+            assert not _runtime_posture()
+        finally:
+            admin.execute(
+                sql.SQL("ALTER DATABASE {} OWNER TO CURRENT_USER").format(identifier)
+            )
+        assert _runtime_posture()
 
 
 @pytest.mark.usefixtures("clean_posture_environment")

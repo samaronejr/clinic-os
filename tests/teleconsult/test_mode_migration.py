@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -13,6 +14,7 @@ from django.db import connection
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 
+from infra.posture_handoff import handoff
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
 from renewal.test_teleconsult_sessions import synthetic_provider
@@ -23,6 +25,8 @@ from teleconsult.test_participants import seed_world
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from uuid import UUID
+
+    from ops.testing.renewal_runner import ProvisionedDatabase
 
     from rbac_fixtures import RbacGraph
 
@@ -151,3 +155,19 @@ def _exercise_mode_migration(rbac_graph: RbacGraph) -> None:
     assert [event.kind for event in events] == ["audio_only", "video_restored"]
     assert [audit.actor_user_id for audit in audits] == [w.patient_session, second]
     assert [event.mode_audit_seq for event in events] == [audit.seq for audit in audits]
+
+
+def test_same_lease_posture_after_committed_migration(
+    request: pytest.FixtureRequest,
+    tmp_path_factory: pytest.TempPathFactory,
+    committed_migration_world: AbstractContextManager[RbacGraph],
+    migrated_pg_cluster: ProvisionedDatabase,
+) -> None:
+    def retain(data: dict[str, object]) -> None:
+        request.node.user_properties.append(("posture-handoff", json.dumps(data)))
+
+    with (
+        handoff(migrated_pg_cluster, tmp_path_factory.getbasetemp(), retain),
+        committed_migration_world as graph,
+    ):
+        _exercise_mode_migration(graph)
