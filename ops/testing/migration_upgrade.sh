@@ -97,6 +97,11 @@ unlink_private_child() {
         unlink "$run_fd" "$run_identity" "$1" "$2"
 }
 
+mkdir_private_child() {
+    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+        mkdir "$run_fd" "$run_identity" "$@"
+}
+
 remove_run_tree() {
     require_run_identity || return 1
     # The kernel reclaims the anonymous mount at last close. There is no
@@ -374,15 +379,16 @@ secret_dir="/proc/$$/fd/$run_fd"
 printf '.' >&"${CUSTODY[1]}"
 wait "$custody_process"
 run_identity="$created_identity"
+export UPGRADE_PRIVATE_RUN_IDENTITY="$run_identity"
 refuse_public_private_entries
 readonly base_worktree="$secret_dir/base" seed_file="$secret_dir/seed.json"
 wave_tree="$secret_dir/wave"
 differential_report="$secret_dir/differential.json"
 export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
-mkdir -m 0700 -- "$secret_dir/tmp" "$secret_dir/uv-cache"
+mkdir_private_child tmp uv-cache
 export TMPDIR="$secret_dir/tmp" UV_CACHE_DIR="$secret_dir/uv-cache"
 echo "== check out base $base_sha =="
-mkdir -m 0700 -- "$base_worktree"
+mkdir_private_child base
 git -C "$project_root" archive --format=tar --output="$secret_dir/base.tar" "$base_sha"
 tar -xf "$secret_dir/base.tar" -C "$base_worktree"
 unlink_private_child base.tar 0
@@ -460,7 +466,7 @@ runpy.run_path(os.environ["UPGRADE_PROBE_DRIVER"])["run_seed"](
 rehearse_wave_h() {
     local wave_sha=4f8d2454987ca1d083ead53a7501126d647a89bc
     local native="$secret_dir/native"
-    mkdir -m 700 "$native"
+    mkdir_private_child native
     write_private_key "$native"
     differential_stage=reference_worktree
     git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
