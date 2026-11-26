@@ -1,0 +1,45 @@
+{
+  "profiles": {
+    "certifying_full": {
+      "at_commit_deadline": false,
+      "call_seconds": 2.0180402169935405,
+      "leaf_cpu_max": "max 100000",
+      "outcome": "passed",
+      "run_id": "0deb533bd038447f9dd3494682bfee3c",
+      "throttled_us": 0
+    },
+    "ordinary": {
+      "at_commit_deadline": false,
+      "call_seconds": 2.3040153819601983,
+      "errors": 0,
+      "leaf_cpu_max": "max 100000",
+      "outcome": "passed",
+      "pytest_exit": 0,
+      "run_id": "7d40b854dfce430d99b83c849aea9b8a",
+      "throttled_us": 0
+    },
+    "quota": {
+      "at_commit_deadline": true,
+      "call_seconds": 10.772871004999615,
+      "errors": 1,
+      "leaf_cpu_max": "25000 100000",
+      "outcome": "failed",
+      "pytest_exit": 1,
+      "run_id": "63e2a2d1b93b44b795e343ccc082f4e7",
+      "throttled_us": 23487897
+    }
+  },
+  "rejected": {
+    "chain_exit": 1,
+    "errors": 0,
+    "failed_call_seconds": 10.064856687036809,
+    "failed_node": "tests/infra/test_lifecycle_lock_races.py::test_cross_clinic_equal_canonical_email_waits_on_one_global_gate",
+    "failures": 1,
+    "passed": 16664,
+    "release_manifest_rows": 0,
+    "run_id": "71d05494cece40ecb1c455a426bf98ba",
+    "skipped": 0,
+    "tests": 16665,
+    "unit_exit": 1
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "added_tests": 14,
+  "certifying_full_invocations": 1,
+  "coverage": "93.59%",
+  "duplicates": 0,
+  "exact_release_gates": "passed",
+  "extra": 0,
+  "focused_tests": 74,
+  "fsync_off_disposable_only_utc": "2026-11-26T04:58:45.448959941Z",
+  "full_exit": 0,
+  "full_nonbrowser_tests": 16665,
+  "guards_before_after": [
+    126,
+    126
+  ],
+  "handoff": {
+    "fresh": {
+      "elapsed_ns": 1717501611,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 34
+    },
+    "fresh_control_distinct": true,
+    "idle_ns": 204156452442,
+    "injected_launcher_wait": {
+      "elapsed_ns": 15000085439,
+      "group_reaped": true,
+      "last_stage": "uv-launch",
+      "leftover_backends": 0,
+      "samples": 297
+    },
+    "run_id": "d9995456307448809cbbe23244c308e7",
+    "same_lease": true,
+    "warm": {
+      "elapsed_ns": 664790465,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 14
+    }
+  },
+  "isolated_harness_tests": 3308,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795720578124741,
+    "nice": 10,
+    "result": "success",
+    "run_id": "0deb533bd038447f9dd3494682bfee3c",
+    "start_us": 1795706023886457,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-r4e-full-serial-a3013b5b.service"
+  },
+  "missing": 0,
+  "module_isolation": true,
+  "mutation_result": {
+    "equivalent": [
+      "r.rolsuper"
+    ],
+    "killed": 37,
+    "requested_killed": [
+      "check_extension_members_only",
+      "collapse_overloads_by_name",
+      "discard_grant_options",
+      "filter_by_app_connect",
+      "ignore_public_application_overload",
+      "omit_bare_database_owner",
+      "omit_context_owner_edge",
+      "omit_machine_owner_root",
+      "omit_native_memory_routine",
+      "omit_schema_ownership",
+      "pg_read_all_settings",
+      "pg_read_all_stats",
+      "pg_stat_scan_tables",
+      "require_extension_for_app_schema"
+    ],
+    "run_id": "705dd8fe709747fb98652e8732515075"
+  },
+  "native_interpreter": {
+    "descriptor_closed": true,
+    "executable_relative_to_checkout": ".venv/bin/python",
+    "implementation": "CPython",
+    "kernel_fd_target": "anon_inode:[pidfd]",
+    "native_executable": "/usr/bin/python3.12",
+    "phase": "pytest_sessionstart",
+    "pidfd_provider": "posix",
+    "run_id": "0deb533bd038447f9dd3494682bfee3c",
+    "sha": "a3013b5b2fe360e1502f459f325ceb6be0de4469",
+    "version": "3.12.3"
+  },
+  "nonpass": 0,
+  "other_full_invocations": [
+    {
+      "result": "rejected",
+      "run_id": "6e314fbb752c431f8312eca63f688966",
+      "supplied_rows": 0
+    },
+    {
+      "result": "rejected",
+      "run_id": "71d05494cece40ecb1c455a426bf98ba",
+      "supplied_rows": 0
+    }
+  ],
+  "parent": "31938a30ab9bfc8a5cb9da9568d834719fbab975",
+  "pidfd_affected_passed_once": 11,
+  "previous_tests": 16651,
+  "provenance": {
+    "grant_options": 0,
+    "migrations": 259,
+    "policy_sha256": "1bdb4c83f80d992b39d22d6f6d7aca543ab55515256e8c3e5922b703adaa9d6c",
+    "routines": 608,
+    "run_id": "82e5c111f5154dd89dd2af3a45a39ce6"
+  },
+  "recorder_mutants_killed": 2,
+  "run_id": "0deb533bd038447f9dd3494682bfee3c",
+  "sha": "a3013b5b2fe360e1502f459f325ceb6be0de4469",
+  "superseded_r4d": {
+    "decision": "REQUEST_CHANGES",
+    "evidence_commit": "4157ef87c725b0332ad62f0c1ce806ffc308bc97",
+    "sha": "31938a30ab9bfc8a5cb9da9568d834719fbab975"
+  },
+  "tree": "f976bc8161a7ff524f5c76ddc2db6074964bf272",
+  "unchanged_make_timeout_seconds": 15
+}

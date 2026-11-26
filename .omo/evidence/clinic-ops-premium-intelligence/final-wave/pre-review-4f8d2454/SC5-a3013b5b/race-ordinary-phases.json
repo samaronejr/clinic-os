@@ -1,0 +1,1 @@
+{"tests/infra/test_lifecycle_lock_races.py::test_cross_clinic_equal_canonical_email_waits_on_one_global_gate":[["setup","passed",0.5149245400098152],["call","passed",2.3040153819601983],["teardown","passed",4.532507699041162]]}

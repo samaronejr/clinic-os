@@ -1,0 +1,21 @@
+{
+  "attribution": "Managed CPython lacked native os.pidfd_open. The process supervisor could not reap its children; child-resource warnings propagated into teardown and a later setup. All affected IDs passed on the native pidfd build. No product or test modification.",
+  "collected": 16665,
+  "control_run_id": "f6580c9ad9344c20b4eb81829b6352b0",
+  "corrected_control_passes": 11,
+  "corrected_python": "3.12.3",
+  "distinct_affected": 11,
+  "failures": 10,
+  "passed": 16654,
+  "phase_errors": 2,
+  "pytest_exit": 1,
+  "rejected_chain_exit": 1,
+  "rejected_python": "3.12.12",
+  "rejected_run_id": "6e314fbb752c431f8312eca63f688966",
+  "rejected_unit": "cpi-kek-r4e-full-a3013b5b.service",
+  "release_manifest_rows": 0,
+  "sha": "a3013b5b2fe360e1502f459f325ceb6be0de4469",
+  "shared_lockfile": true,
+  "skipped": 0,
+  "tree": "f976bc8161a7ff524f5c76ddc2db6074964bf272"
+}

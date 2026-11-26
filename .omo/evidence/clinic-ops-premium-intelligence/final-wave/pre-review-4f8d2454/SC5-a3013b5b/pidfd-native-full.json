@@ -1,0 +1,31 @@
+{
+  "affected_ids": [
+    "tests/browser/test_browser_server_supervisor.py::test_dead_master_teardown_releases_the_inherited_listener[sha256-78d6e96e97ae0b769d4e277a3c9d3c1ef3f1c0a7d373a083c472f452cad4806d]",
+    "tests/browser/test_browser_server_supervisor.py::test_dead_master_teardown_releases_the_inherited_listener[sha256-feee0f4e10ea9e7000095a542728b55f9895807d9e4547520faf3323b1792732]",
+    "tests/browser/test_browser_server_supervisor.py::test_master_runs_in_its_own_group_and_is_reaped_on_term",
+    "tests/browser/test_browser_server_supervisor.py::test_release_check_waits_for_tcp_expiry_but_refuses_at_deadline",
+    "tests/browser/test_browser_server_supervisor.py::test_start_master_reaps_the_spawn_when_the_handoff_is_interrupted",
+    "tests/browser/test_browser_server_supervisor.py::test_start_master_reaps_when_signaled_after_ownership_is_published",
+    "tests/browser/test_browser_server_supervisor.py::test_start_master_reaps_when_signaled_before_the_spawn_returns",
+    "tests/browser/test_browser_server_supervisor.py::test_term_resistant_master_is_escalated_to_kill_and_reaped",
+    "tests/browser/test_browser_server_supervisor.py::test_terminate_is_idempotent_and_leaves_no_zombie",
+    "tests/renewal/test_browser_runner.py::test_fixture_secrets_never_reach_a_failure_report",
+    "tests/renewal/test_browser_runner.py::test_teardown_interrupt_is_reaped_then_propagated"
+  ],
+  "also_passed_in_prior_native_full": 11,
+  "counting_run_id": "0deb533bd038447f9dd3494682bfee3c",
+  "interpreter": {
+    "descriptor_closed": true,
+    "executable_relative_to_checkout": ".venv/bin/python",
+    "implementation": "CPython",
+    "kernel_fd_target": "anon_inode:[pidfd]",
+    "native_executable": "/usr/bin/python3.12",
+    "phase": "pytest_sessionstart",
+    "pidfd_provider": "posix",
+    "run_id": "0deb533bd038447f9dd3494682bfee3c",
+    "sha": "a3013b5b2fe360e1502f459f325ceb6be0de4469",
+    "version": "3.12.3"
+  },
+  "passed_once_in_certifying_full": 11,
+  "unchanged_native_control_passes": 11
+}

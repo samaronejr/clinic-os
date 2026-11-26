@@ -1,0 +1,98 @@
+{
+  "coverage": "93.59%",
+  "exact_exit": 0,
+  "exact_markers": [
+    "All checks passed!",
+    "2956 files already formatted",
+    "Success: no issues found in 2956 source files",
+    "System check identified no issues (0 silenced).",
+    "No changes detected"
+  ],
+  "full_guards_before_after": [
+    126,
+    126
+  ],
+  "full_unit": {
+    "code": 1,
+    "exit_us": 1795720578124741,
+    "nice": 10,
+    "result": "success",
+    "run_id": "0deb533bd038447f9dd3494682bfee3c",
+    "start_us": 1795706023886457,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-r4e-full-serial-a3013b5b.service"
+  },
+  "product": "a3013b5b2fe360e1502f459f325ceb6be0de4469",
+  "provenance_exit": 0,
+  "rejected_chain_exit": 1,
+  "rejected_native_chain_exit": 1,
+  "rejected_native_unit": {
+    "code": 1,
+    "exit_us": 1795702502470336,
+    "nice": 10,
+    "result": "exit-code",
+    "run_id": "71d05494cece40ecb1c455a426bf98ba",
+    "start_us": 1795688697584405,
+    "state": "failed",
+    "status": 1,
+    "unit": "cpi-kek-r4e-full-native-a3013b5b.service"
+  },
+  "rejected_unit": {
+    "code": 1,
+    "exit_us": 1795688362397824,
+    "nice": 10,
+    "result": "exit-code",
+    "run_id": "6e314fbb752c431f8312eca63f688966",
+    "start_us": 1795675057362404,
+    "state": "failed",
+    "status": 1,
+    "unit": "cpi-kek-r4e-full-a3013b5b.service"
+  },
+  "summaries": {
+    "catalog_mutation": {
+      "pytest_exit": 1,
+      "summary": "37 failed, 1 passed in 405.69s (0:06:45)",
+      "validator_exit": 0
+    },
+    "certifying_full": {
+      "pytest_exit": 0,
+      "summary": "16665 passed in 14508.62s (4:01:48)"
+    },
+    "focused": {
+      "pytest_exit": 0,
+      "summary": "74 passed in 1109.30s (0:18:29)"
+    },
+    "isolation": {
+      "pytest_exit": 0,
+      "summary": "3308 passed in 729.30s (0:12:09)"
+    },
+    "native_pidfd_preflight": {
+      "pytest_exit": 0,
+      "summary": "11 passed in 6.36s"
+    },
+    "race_ordinary": {
+      "pytest_exit": 0,
+      "summary": "1 passed in 206.39s (0:03:26)",
+      "validator_exit": 0
+    },
+    "race_quota": {
+      "pytest_exit": 1,
+      "summary": "1 failed, 1 error in 30.55s",
+      "validator_exit": 0
+    },
+    "recorder": {
+      "pytest_exit": 1,
+      "summary": "2 failed in 457.70s (0:07:37)",
+      "validator_exit": 0
+    },
+    "rejected_full": {
+      "pytest_exit": 1,
+      "summary": "10 failed, 16654 passed, 2 errors in 13259.50s (3:40:59)"
+    },
+    "rejected_native_full": {
+      "pytest_exit": 1,
+      "summary": "1 failed, 16664 passed in 13776.76s (3:49:36)"
+    }
+  }
+}
