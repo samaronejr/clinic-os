@@ -96,14 +96,22 @@ def committed_data(
                 predicate = (
                     sql.SQL("WHERE item.id <> %s") if ignore_entry else sql.SQL("")
                 )
+                # ROW(item.*) expands the columns even if one is named item.
+                # record_send frames NULL with length -1, not an empty value.
+                # Prefix the sorted, duplicate-preserving 32-byte hashes with
+                # the row count. Ordering bytea does not use a collation.
                 cursor.execute(
-                    sql.SQL(
-                        "SELECT encode(sha256(convert_to(COALESCE("
-                        """string_agg(hash, '' ORDER BY hash COLLATE "C"), ''), """
-                        "'UTF8')), 'hex') FROM (SELECT encode(sha256(convert_to("
-                        "item::text, 'UTF8')), 'hex') AS hash "
-                        "FROM ONLY {} AS item {}) h"
-                    ).format(relation, predicate),
+                    sql.SQL("""
+                        SELECT encode(sha256(
+                            int8send(count(*)) || COALESCE(
+                                string_agg(h.hash, ''::bytea ORDER BY h.hash), ''::bytea
+                            )
+                        ), 'hex')
+                        FROM (
+                            SELECT sha256(pg_catalog.record_send(ROW(item.*))) AS hash
+                            FROM ONLY {} AS item {}
+                        ) AS h
+                    """).format(relation, predicate),
                     (entry[0],) if ignore_entry and entry is not None else (),
                 )
                 ((digest,),) = cursor.fetchall()

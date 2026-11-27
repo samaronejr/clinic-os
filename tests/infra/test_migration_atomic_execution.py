@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -12,7 +13,11 @@ from psycopg import sql
 
 from database_urls import database_url_for_name
 from infra.atomic_scope_observation import Publication, laws_broken
-from infra.test_migration_atomic_scope import ATOMIC_PINS
+from infra.test_migration_atomic_scope import (
+    ATOMIC_PINS,
+    assert_atomic_admission,
+    operation_digest,
+)
 from infra.test_protected_migration_resume import _clone, plan
 
 if TYPE_CHECKING:
@@ -259,6 +264,12 @@ def _at_commit(statement: str) -> str:
     )
 
 
+_PROBE_PUBLICATION = """
+    CREATE TABLE clinic_app.prescription_sncrnumberallocation (id int);
+    CREATE TABLE clinic_app.prescription_prescriptionissuance (id int);
+"""
+
+
 @pytest.mark.parametrize(
     ("statement", "expected", "committed"),
     [
@@ -303,10 +314,6 @@ def test_atomic_execution_rejects_committed_old_data_changes(
     # Use the admitted table and helper names, not an extra object that would
     # independently trip the schema laws in the simulated re-pinning review.
     publication = PUBLICATIONS[PRESCRIPTION]
-    setup = """
-        CREATE TABLE clinic_app.prescription_sncrnumberallocation (id int);
-        CREATE TABLE clinic_app.prescription_prescriptionissuance (id int);
-    """
     statement_prefix = ""
     if "CREATE FUNCTION" not in statement:
         statement_prefix = """
@@ -317,7 +324,7 @@ def test_atomic_execution_rejects_committed_old_data_changes(
     monkeypatch.setattr(
         type(migration),
         "operations",
-        [migrations.RunSQL(setup + statement_prefix + statement)],
+        [migrations.RunSQL(_PROBE_PUBLICATION + statement_prefix + statement)],
     )
     with _clone(
         predecessor_plan.admin_url, predecessor_plan.source[PRESCRIPTION]
@@ -356,3 +363,126 @@ def test_atomic_execution_rejects_committed_old_data_changes(
                 == committed[1]
             )
         assert broken == expected
+
+
+type ProbeRow = tuple[int | None, str | None, str | None, str | None, str | None]
+
+_ROW = (1, "stable", "before", "outer", "inner")
+_NULL_ITEM = (1, None, "before", "outer", "inner")
+_ALL_NULL = (None, None, None, None, None)
+_OTHER_ROW = (2, "other", None, None, None)
+_OTHER_HASH = (1, None, "before", "outer", "changed")
+
+
+@pytest.mark.parametrize(
+    ("statement", "before", "after"),
+    [
+        pytest.param(
+            "UPDATE f6_digest.old_rows SET payload = 'after'",
+            [_ROW],
+            [(1, "stable", "after", "outer", "inner")],
+            id="item-collision-update",
+        ),
+        pytest.param(
+            "DELETE FROM f6_digest.old_rows WHERE item IS NULL",
+            [_NULL_ITEM],
+            [],
+            id="null-item-delete",
+        ),
+        pytest.param(
+            "INSERT INTO f6_digest.old_rows SELECT * FROM f6_digest.old_rows",
+            [_NULL_ITEM],
+            [_NULL_ITEM, _NULL_ITEM],
+            id="duplicate-null-item-row",
+        ),
+        pytest.param(
+            "UPDATE f6_digest.old_rows SET payload = ''",
+            [_OTHER_ROW],
+            [(2, "other", "", None, None)],
+            id="null-to-empty",
+        ),
+        pytest.param(
+            "UPDATE f6_digest.old_rows SET h = 'changed'",
+            [_ROW],
+            [(1, "stable", "before", "changed", "inner")],
+            id="outer-alias-column",
+        ),
+        pytest.param(
+            "UPDATE f6_digest.old_rows SET hash = 'changed' "
+            "WHERE ctid = (SELECT ctid FROM f6_digest.old_rows "
+            "WHERE hash = 'inner' ORDER BY ctid LIMIT 1)",
+            [_NULL_ITEM, _NULL_ITEM, _OTHER_HASH],
+            [_NULL_ITEM, _OTHER_HASH, _OTHER_HASH],
+            id="aggregate-alias-multiplicity",
+        ),
+        pytest.param(
+            "DELETE FROM f6_digest.old_rows",
+            [_ALL_NULL],
+            [],
+            id="all-null-delete",
+        ),
+        pytest.param(
+            "WITH removed AS (DELETE FROM f6_digest.old_rows RETURNING *) "
+            "INSERT INTO f6_digest.old_rows SELECT * FROM removed ORDER BY id DESC",
+            [_ROW, _OTHER_ROW],
+            [_OTHER_ROW, _ROW],
+            id="row-order-only",
+        ),
+    ],
+)
+def test_atomic_execution_compares_whole_row_multisets(
+    statement: str,
+    before: list[ProbeRow],
+    after: list[ProbeRow],
+    predecessor_plan: Plan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = MigrationLoader(None).disk_migrations[PRESCRIPTION]
+    monkeypatch.setattr(
+        type(migration),
+        "operations",
+        [migrations.RunSQL(_PROBE_PUBLICATION + _at_commit(statement))],
+    )
+    loader = MigrationLoader(None)
+    with pytest.raises(AssertionError, match="atomic F6 operations changed"):
+        assert_atomic_admission(loader)
+    # Prospective re-pin only for this test: the deferred write runs after L3.
+    pin = operation_digest(loader.disk_migrations[PRESCRIPTION])
+    monkeypatch.setitem(ATOMIC_PINS, PRESCRIPTION, pin)
+    assert_atomic_admission(loader)
+    changed = Counter(before) != Counter(after)
+    with _clone(
+        predecessor_plan.admin_url, predecessor_plan.source[PRESCRIPTION]
+    ) as db:
+        with db.cursor() as cursor:
+            cursor.execute("CREATE SCHEMA f6_digest")
+            cursor.execute(
+                "CREATE UNLOGGED TABLE f6_digest.old_rows "
+                "(id integer, item text, payload text, h text, hash text)"
+            )
+            cursor.executemany(
+                "INSERT INTO f6_digest.old_rows VALUES (%s, %s, %s, %s, %s)", before
+            )
+        url = database_url_for_name(
+            predecessor_plan.admin_url, str(db.settings_dict["NAME"])
+        )
+        readback = (
+            "SELECT id, item, payload, h, hash FROM f6_digest.old_rows ORDER BY ctid"
+        )
+        with psycopg.connect(url) as observer:
+            assert observer.execute(readback).fetchall() == before
+        broken = laws_broken(
+            db,
+            PRESCRIPTION,
+            PUBLICATIONS[PRESCRIPTION],
+            monkeypatch,
+            admin_url=predecessor_plan.admin_url,
+        )
+        with psycopg.connect(url) as observer:
+            committed = observer.execute(readback).fetchall()
+            if changed:
+                assert Counter(committed) == Counter(after)
+            else:
+                # The no-change control changed physical row order, not contents.
+                assert committed == after
+    assert broken == ({"L5"} if changed else set())
