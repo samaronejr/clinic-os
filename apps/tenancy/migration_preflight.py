@@ -170,18 +170,11 @@ def _index_census(
     )
 
 
-def schema_projection(
-    db: BaseDatabaseWrapper,
-    *,
-    expected: SchemaProjection | None = None,
-    edge: str = "",
-) -> SchemaProjection:
-    """Read the index census and hash one dump from the same snapshot."""
+def _dump_schema(db: BaseDatabaseWrapper, *selection: str) -> bytes:
+    """Read the logical schema with the approved client and owner connection."""
     db.ensure_connection()
     conn = cast("Connection[tuple[object, ...]]", db.connection)
     info = conn.info
-    if info.server_version // 10000 != POSTGRES_MAJOR:
-        refuse("the approved schema projection requires PostgreSQL 16")
     parameters = info.get_parameters()
     environment = {
         "PATH": os.environ.get("PATH", os.defpath),
@@ -199,6 +192,45 @@ def schema_projection(
             if key in parameters
         },
     }
+    executable = which("pg_dump")
+    if executable is None:
+        refuse("the approved plan requires a PostgreSQL 16 pg_dump client")
+    try:
+        return subprocess.run(  # noqa: S603 - fixed executable and flags
+            [
+                executable,
+                "--no-password",
+                "--schema-only",
+                "--quote-all-identifiers",
+                "--encoding=UTF8",
+                "--lock-wait-timeout=5s",
+                *selection,
+            ],
+            env=environment,
+            capture_output=True,
+            timeout=30,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        # Never relay subprocess diagnostics or connection parameters.
+        refuse(
+            "pg_dump schema snapshot failed "
+            "(check the PostgreSQL 16 client and owner access)"
+        )
+
+
+def schema_projection(
+    db: BaseDatabaseWrapper,
+    *,
+    expected: SchemaProjection | None = None,
+    edge: str = "",
+) -> SchemaProjection:
+    """Read the index census and hash one dump from the same snapshot."""
+    db.ensure_connection()
+    conn = cast("Connection[tuple[object, ...]]", db.connection)
+    info = conn.info
+    if info.server_version // 10000 != POSTGRES_MAJOR:
+        refuse("the approved schema projection requires PostgreSQL 16")
     with transaction.atomic(using=db.alias), db.cursor() as cursor:
         cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         cursor.execute("SELECT pg_catalog.pg_export_snapshot()")
@@ -212,9 +244,6 @@ def schema_projection(
             drift = unusable | {name for name, _ in indexes ^ expected.indexes}
             if drift:
                 _schema_mismatch(edge, drift)
-        executable = which("pg_dump")
-        if executable is None:
-            refuse("the approved plan requires a PostgreSQL 16 pg_dump client")
         # pg_dump emits CREATE EXTENSION, not member DDL. Record generic
         # extension membership by logical object identity, not catalog OIDs.
         cursor.execute(
@@ -230,28 +259,7 @@ def schema_projection(
             """
         )
         members = sorted(cursor.fetchall())
-        try:
-            dump = subprocess.run(  # noqa: S603 - fixed executable and flags
-                [
-                    executable,
-                    "--no-password",
-                    "--schema-only",
-                    "--quote-all-identifiers",
-                    "--encoding=UTF8",
-                    "--lock-wait-timeout=5s",
-                    "--snapshot=" + snapshot,
-                ],
-                env=environment,
-                capture_output=True,
-                timeout=30,
-                check=True,
-            ).stdout
-        except (OSError, subprocess.SubprocessError):
-            # Never relay subprocess diagnostics or connection parameters.
-            refuse(
-                "pg_dump schema snapshot failed "
-                "(check the PostgreSQL 16 client and owner access)"
-            )
+        dump = _dump_schema(db, "--snapshot=" + snapshot)
     payload = _normalize(dump) + b"\0" + json.dumps(members).encode()
     return SchemaProjection(sha256(payload).hexdigest(), indexes)
 

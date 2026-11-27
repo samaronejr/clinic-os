@@ -1,128 +1,117 @@
-"""Require the F6 atomic exception to create, not mutate, tables."""
+"""Fail closed on changes to the two admitted F6 atomic publications."""
 
 from __future__ import annotations
 
-import re
+import inspect
+import json
+from hashlib import sha256
 from typing import TYPE_CHECKING
 
-import sqlparse
-from apps.tenancy.migrations._resumable_schema import (
-    AtomicSchemaMigration,
-    GuardedMigration,
-)
+from apps.tenancy import fields, migration_operations
+from apps.tenancy.migrations import _resumable_schema
 from django.db import migrations
 from django.db.migrations.loader import MigrationLoader
-from django.db.migrations.state import ProjectState
-
-from infra.test_migration_sql_layout import _operations, _python_sql
+from django.db.migrations.writer import OperationWriter
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
-
     from django.db.migrations.operations.base import Operation
 
-_IDENT = r'(?:"(?:[^"]|"")+"|[a-z_][\w$]*)'
-_RELATION = rf"{_IDENT}(?:\s*\.\s*{_IDENT})?"
-_RELATIONS = re.compile(_RELATION, re.IGNORECASE)
-_TARGETS = re.compile(
-    r"\A(?:"
-    r"(?:ALTER TABLE|INSERT INTO|UPDATE|DELETE FROM|MERGE INTO|"
-    r"TRUNCATE(?: TABLE)?|DROP TABLE|LOCK(?: TABLE)?)\s+(?:IF EXISTS\s+)?"
-    r"|(?:CREATE(?: OR REPLACE)?|ALTER|DROP)\s+(?:CONSTRAINT\s+)?"
-    rf"(?:POLICY|TRIGGER)\b[^;]+?\bON\s+"
-    r"|CREATE\s+(?:UNIQUE\s+)?INDEX\b[^;]+?\bON\s+"
-    r")(?:ONLY\s+)?"
-    rf"(?P<targets>{_RELATION}(?:\s*,\s*{_RELATION})*)",
-    re.IGNORECASE,
-)
-_TABLE_ACL = re.compile(
-    r"\A(?:GRANT|REVOKE)\b.+?\bON\s+(?:TABLE\s+)?"
-    rf"(?P<targets>{_RELATION}(?:\s*,\s*{_RELATION})*)\s+(?:TO|FROM)\s+",
-    re.IGNORECASE,
-)
+LANE = {
+    "ai.0001_initial",
+    "ai.0002_agent_execution",
+    "ai.0003_artifact_retention",
+    "ai.0004_document_extraction",
+    "ai.0005_evaluation",
+    "billing.0013_fiscal_documents",
+    "comms.0008_omnichannel_inbox",
+    "ehr.0014_longitudinal_record",
+    "ehr.0015_specialty_packs",
+    "identity.0019_identity_lifecycle",
+    "insurance.0001_revenue_cycle",
+    "intake.0013_patient_demographics",
+    "intake.0017_patient_aliases",
+    "intake.0029_membership_payer",
+    "interop.0001_import_framework",
+    "inventory.0001_inventory",
+    "orders.0001_identity_safe_results",
+    "prescription.0012_clinical_document_kinds",
+    "prescription.0013_class_catalog_directions",
+    "prescription.0015_sncr_issuance",
+    "scheduling.0011_insurer_membership",
+    "scribe.0001_initial",
+    "scribe.0003_transcripts",
+    "scribe.0005_note_drafts",
+    "workflows.0006_care_plans",
+}
+ATOMIC_PINS = {
+    (
+        "billing",
+        "0013_fiscal_documents",
+    ): "b39af2a25ad0ffdc0d0faecab253c842fc57c9c75bff22c80e8ad5558fcc48be",
+    (
+        "prescription",
+        "0015_sncr_issuance",
+    ): "747bd0f73043d7728ae6fd3d0eb8277f4531818a4360ad933545916c272103bf",
+}
 
 
-def _sql_scripts(operation: migrations.RunSQL | migrations.RunPython) -> Iterator[str]:
-    if isinstance(operation, migrations.RunPython):
-        scripts = _python_sql(operation)
-        assert isinstance(scripts, list), "cannot inspect atomic RunPython effects"
-        yield from scripts
-        return
-    if isinstance(operation.sql, str):
-        yield operation.sql
-        return
-    assert isinstance(operation.sql, (tuple, list)), "unknown atomic RunSQL shape"
-    for item in operation.sql:
-        statement = item[0] if isinstance(item, (list, tuple)) else item
-        assert isinstance(statement, str)
-        yield statement
+def _effective_operation(operation: Operation) -> list[object]:
+    cls = type(operation)
+    source = inspect.getsource(cls) if cls.__module__.startswith("apps.") else None
+    rendered, imports = OperationWriter(operation).serialize()
+    result: list[object] = [
+        f"{cls.__module__}.{cls.__qualname__}",
+        source,
+        operation.atomic,
+        operation.reversible,
+        rendered,
+        sorted(imports),
+    ]
+    if isinstance(operation, migrations.SeparateDatabaseAndState):
+        database = operation.database_operations
+        result.append([_effective_operation(op) for op in database])
+        result.append([_effective_operation(op) for op in operation.state_operations])
+    if isinstance(operation, migrations.RunSQL):
+        # OperationWriter renders the constructor; also bind the active bytes.
+        result.extend([operation.sql, operation.reverse_sql, operation.hints])
+    return result
 
 
-def _sql_targets(scripts: Iterable[str]) -> Iterator[str]:
-    for script in scripts:
-        # Dollar-quoted function bodies stay in their CREATE FUNCTION
-        # statements; the bodies don't run during installation.
-        for raw in sqlparse.split(sqlparse.format(script, strip_comments=True)):
-            statement = " ".join(raw.split())
-            assert not re.match(r"(?:DO|CALL|WITH)\b", statement, re.IGNORECASE), (
-                "cannot verify table targets of an indirect atomic SQL operation"
-            )
-            match = _TARGETS.match(statement) or _TABLE_ACL.match(statement)
-            if match:
-                for relation in _RELATIONS.findall(match["targets"]):
-                    name = relation.rsplit(".", 1)[-1].strip()
-                    yield (
-                        name[1:-1].replace('""', '"')
-                        if name.startswith('"')
-                        else name.lower()
-                    )
+def operation_digest(migration: migrations.Migration) -> str:
+    payload = [
+        inspect.getsource(type(migration)),
+        inspect.getsource(_resumable_schema),
+        inspect.getsource(migration_operations),
+        inspect.getsource(fields),
+        migration.dependencies,
+        migration.run_before,
+        migration.replaces,
+        [_effective_operation(operation) for operation in migration.operations],
+    ]
+    return sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
 
 
-def _earlier_targets(
-    operations: Iterable[Operation],
-    app: str,
-    models: set[tuple[str, str]],
-    earlier_tables: set[str],
-) -> set[str]:
-    targets: set[str] = set()
-    for operation in _operations(operations):
-        if isinstance(operation, migrations.CreateModel):
-            continue
-        if isinstance(operation, (migrations.RunSQL, migrations.RunPython)):
-            targets.update(set(_sql_targets(_sql_scripts(operation))) & earlier_tables)
-            continue
-        model_name = getattr(operation, "model_name", None)
-        assert isinstance(model_name, str), (
-            f"unclassified atomic operation: {operation}"
-        )
-        if (app, model_name.lower()) in models:
-            targets.add(f"{app}.{model_name.lower()}")
-    return targets
-
-
-def test_atomic_lane_migrations_do_not_mutate_earlier_tables() -> None:
-    loader = MigrationLoader(None)
-    graph = loader.graph
-    ordered = dict.fromkeys(
-        key for leaf in graph.leaf_nodes() for key in graph.forwards_plan(leaf)
+def assert_atomic_admission(loader: MigrationLoader) -> None:
+    known = {key for key in loader.disk_migrations if ".".join(key) in LANE}
+    assert {".".join(key) for key in known} == LANE
+    wrappers = (
+        _resumable_schema.GuardedMigration,
+        _resumable_schema.AtomicSchemaMigration,
     )
-    state = ProjectState(real_apps=loader.unmigrated_apps)
-    offenders: dict[str, list[str]] = {}
-    for app, name in ordered:
-        migration = graph.nodes[app, name]
-        if migration.atomic and isinstance(
-            migration, (AtomicSchemaMigration, GuardedMigration)
-        ):
-            older_tables = {
-                model.options.get("db_table", f"{label}_{model.name_lower}")
-                for (label, _), model in state.models.items()
-            }
-            targets = _earlier_targets(
-                migration.operations, app, set(state.models), older_tables
-            )
-            if targets:
-                offenders[f"{app}.{name}"] = sorted(targets)
-        state = migration.mutate_state(state, preserve=False)
-    assert not offenders, (
-        f"Atomic F6 migrations target pre-existing tables: {offenders}"
+    lane = known | {
+        key
+        for key, migration in loader.disk_migrations.items()
+        if isinstance(migration, wrappers)
+    }
+    atomic = {key for key in lane if loader.disk_migrations[key].atomic}
+    assert atomic == ATOMIC_PINS.keys(), "unapproved atomic F6 migration set"
+    actual = {
+        key: operation_digest(loader.disk_migrations[key]) for key in sorted(atomic)
+    }
+    assert actual == ATOMIC_PINS, (
+        "atomic F6 operations changed: rerun executed laws and review the pin"
     )
+
+
+def test_atomic_lane_migrations_match_audited_operation_pins() -> None:
+    assert_atomic_admission(MigrationLoader(None))
