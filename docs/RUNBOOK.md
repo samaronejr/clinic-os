@@ -539,78 +539,70 @@ ownership, or direct `identity_user` access to `clinic_app`.
 - Use `uv run python manage.py showmigrations` for diagnosis. Do not edit an
   already-shipped migration to hide drift.
 
-The resume fingerprint compares schema, not the install date. For exactly
-`clinic_app.otp_totp_totpdevice.created_at` and
-`clinic_app.otp_static_staticdevice.created_at`, django-otp `0003_add_timestamps`
-adds a column with an install-time timestamp literal and then drops the SQL
-default. PostgreSQL retains the literal in `pg_attribute.attmissingval`, not the
-expression or function that supplied it. For that field alone the verifier
-compares the shape (one finite `timestamptz` literal, no declared default), not
-the instant. While a missing value is present, this literal exception applies
-to those two columns only.
+#### Interrupted forward migration
 
-Separately, for **any column**, a rewrite such as `VACUUM FULL` can clear
-`(atthasmissing=true, attmissingval=V)` to `(false, NULL)`. The cleared pair
-is **not** proof of what was stored. In the protected DDL transaction the
-migration owner saves the exact typed value and primary keys of the visible
-tuples whose physical attribute count stops before that column. The bootstrap
-installs a restricted PostgreSQL 16 `pageinspect` wrapper: it exposes only
-tuple locations and attribute counts to the migration roles, never heap-page
-contents or tuple data to the runtime role. Retry checks every saved key
-against its exact value. Later inserts that already carried the column are
-not part of the proof and can legitimately hold different values.
+The supported F6 recovery path is the **same release's all-leaves forward
+`migrate --noinput`** on PostgreSQL 16, from a freshly bootstrapped database or
+from the approved  `b39ae436` upgrade base. Keep application writes quiesced
+from before the first attempt until verification succeeds. Run on a direct
+owner connection (not a transaction-pooling proxy); the command holds a
+session advisory lock, but it cannot prevent out-of-band operator writes or
+DDL. Use **clinic_owner**, never the application role. Do not switch targets,
+use `--fake`, edit the Django ledger, or recreate progress to repair a retry.
 
-A successful proof stays with **the original witness and its keys**. The
-protected transaction marks that header with the table OID and physical
-attribute number. A later migration checks the live column identity, type,
-typmod and binary default and rereads the original keys. Recording the first
-migration does not discard the proof, nor does an empty cohort created later
-replace a populated one. The clean-run write set includes tables whose
-internal foreign-key triggers were recreated even if their deparsed definitions
-are unchanged. The reference stores table names, not local catalog-row OIDs.
+Before the first attempt, an administrator must run the current
+`ops/db/bootstrap.sql` (normally `make db-bootstrap`) to install the normal
+roles, permissions and owner-only `clinic_migration.progress` table. The
+existing role setup still needs an administrator able to create the required
+roles and memberships, including the resolver's BYPASSRLS and test superuser
+where the supplied bootstrap is used. Running migrations adds no superuser
+helper and does not require `pageinspect`. Install a PostgreSQL 16 `pg_dump`
+client on the migration host's PATH (bundled in the release image). The owner
+must be able to establish a second connection to the same database with the
+same TLS settings; the client reads a short-lived exported schema snapshot.
+Do not re-run bootstrap to replace a missing journal on an interrupted DB.
 
-When a cleared pair has no trusted witness (including a cut on an older
-installation), or a witnessed key or value is missing or wrong, **automatic
-recovery is impossible; restore or rebuild is required**. Do not create a
-witness from the current rows, fake a Django record, or infer the default
-from the current `pg_attrdef` or a schema dump. The workflow depends on the
-existing deployment gate preventing application writes between interruption
-and resume; there is no application change tracking, recorder hook, or clock
-trust. A logical restore does not import another heap's migration witnesses.
+The following lane migrations record each guarded commit in the **same
+transaction** as the work and its deferred SQL. A retry reads that receipt
+prefix (including the last commit before Django inserts its migration row):
 
-Retained side values use the typed PostgreSQL binary representation, not a
-JSON-number round trip: numeric scale and digits, along with array dimensions
-and lower bounds, survive comparison. Column type, typmod, declared defaults,
-and reverse missing-flag transitions still compare exactly. The two OTP
-literal exceptions above do not relax the value stored in a witness.
+- `ai.0001_initial`, `ai.0002_agent_execution`, `ai.0003_artifact_retention`
+- `ehr.0014_longitudinal_record`, `identity.0019_identity_lifecycle`
+- `insurance.0001_revenue_cycle`, `intake.0013_patient_demographics`,
+  `intake.0029_membership_payer`, `interop.0001_import_framework`
+- `prescription.0012_clinical_document_kinds`,
+  `prescription.0013_class_catalog_directions`,
+  `scheduling.0011_insurer_membership`
+- `scribe.0001_initial`, `scribe.0003_transcripts`, `workflows.0006_care_plans`
 
-`pg_index.indcheckxmin` is a snapshot-horizon hint about HOT chains. PostgreSQL
-can already use a valid index in a sufficiently new snapshot, and `REINDEX`
-can clear the hint without changing the index definition. The verifier does
-not compare that bit. `indisvalid`, `indisready`, `indislive`, and the declared
-clustering designation (`indisclustered`) are still compared.
+Additive migrations moved to one transaction publish their schema and Django
+record together. Protected-field migrations are irreversible; rollback is
+restore. Older non-atomic migrations outside this list are not covered by the
+F6 recovery protocol. The journal is deployment metadata, not application
+content; a logical data restore does not copy it from the source.
 
-A first `CLUSTER table_name USING index_name` also designates that index for
-future clustering. A bare retry must refuse, name the table, index and
-`indisclustered`, and leave the schema, rows and migration ledger untouched.
-Recovery never ignores or automatically clears the designation.
+The command compares one normalized whole-database `pg_dump --schema-only`
+projection at entry and at exit against a trusted clean rehearsal. The Django
+ledger and progress select the expected entry; the live schema never selects
+a prefix. The projection includes extension member identities omitted from a
+standard dump, such as the unaccent dictionary. It ignores physical layout,
+so a `VACUUM FULL` alone does not block a clean upgrade. It is not a row audit:
+values left by a historically wrong fast default, arbitrary prior data
+corruption, and extension internals not represented by the projection are
+not detected. A declaration such as a new clustering designation or an
+operator-created index is logical DDL and is not silently accepted.
 
-1. Keep application writes gated. On the migration database, confirm the
-   designated index matches the one in the error. Substitute the named table:
-
-   ```sql
-   SELECT indrelid::regclass AS table_name, indexrelid::regclass AS index_name
-   FROM pg_catalog.pg_index
-   WHERE indrelid = 'clinic_app.table_name'::regclass AND indisclustered;
-   ```
-
-2. If the pre-maintenance designation was **unset** and only the physical
-   reorder was intended, an operator can run
-   `ALTER TABLE clinic_app.table_name SET WITHOUT CLUSTER`. This preserves
-   the rewritten heap. Do not clear a prior or intentionally changed designation;
-   resolve that schema change separately.
-3. Reconnect as the migration owner and retry `python manage.py migrate --noinput`
-   on the same database. Do not fake the recorder row.
+Missing/corrupt progress, an unsupported ledger state, or a logical mismatch
+at entry stops before migration writes. Keep writes gated. If the error names
+an unexpected schema change and the operator can independently verify and
+reverse that change, undo only that DDL and retry the **same** command. On an
+unexplained state (including a pre-protocol partial migration) or an exit
+mismatch, **automatic recovery is impossible; restore or rebuild is required**.
+An exit mismatch cannot roll back already committed steps. Use an approved
+pre-upgrade backup or rebuild a disposable installation; never fake the
+recorder row or widen database privileges. Regenerate the reference on separate
+known-clean PostgreSQL 16 databases for changes to the approved plan; never
+learn expected hashes from an interrupted database.
 
 ### Authentication or tenant access returns 403
 

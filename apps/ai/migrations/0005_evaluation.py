@@ -6,20 +6,20 @@ from django.db import migrations
 
 from apps.ai.migrations import _evaluation_sql
 from apps.ai.migrations._evaluation_tables import OPERATIONS
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
 
 
-class ProtectedSchema(CheckpointedStateBatch):
+class ProtectedSchema(SchemaStateBatch):
     """Commit encrypted observations and their independent SQL guards together."""
 
     atomic = True
     reversible = False
 
 
-class Migration(migrations.Migration):
+class Migration(AtomicSchemaMigration):
     """No external approval or real-provider route is installed."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("ai", "0004_document_extraction"),
         ("identity", "0041_retention_authority"),
@@ -29,7 +29,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            receipt="ai_modelchangerequest_approved_by_id_7db7814f",
             database_operations=[
                 *OPERATIONS,
                 migrations.RunSQL(_evaluation_sql.SQL),

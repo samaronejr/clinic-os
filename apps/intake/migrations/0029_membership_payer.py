@@ -5,21 +5,19 @@ from typing import ClassVar
 from django.db import migrations, models
 
 from apps.insurance.migrations._membership_sql import INTAKE_SQL
-from apps.tenancy.migrations._resumable_schema import AtomicRunSQL
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Repeatable SQL, irreversible metadata linkage; rollback is a restore."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("intake", "0028_messages_operation"),
         ("insurance", "0001_revenue_cycle"),
     ]
     operations: ClassVar = [
-        AtomicRunSQL(
+        migrations.RunSQL(
             INTAKE_SQL,
-            receipt="membership-payer:0",
             state_operations=[
                 migrations.AddField(
                     model_name="insurancemembership",

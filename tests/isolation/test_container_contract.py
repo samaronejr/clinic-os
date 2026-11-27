@@ -57,11 +57,15 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
 
     assert from_lines == [
         f"FROM --platform=linux/amd64 {UV_IMAGE} AS uv",
+        "FROM --platform=linux/amd64 docker.io/library/postgres:16.14-bookworm"
+        "@sha256:714b08dd70c05160db032e4321033ac4e5b6328935b2d03ed419c3a898aa8219"
+        " AS pg-client",
         f"FROM --platform=linux/amd64 {PYTHON_IMAGE} AS builder",
         f"FROM --platform=linux/amd64 {PYTHON_IMAGE} AS runtime",
         "FROM runtime AS realtime",
         "FROM runtime AS web",
     ]
+    assert "COPY --from=pg-client /clinic-pg /opt/clinic-pg" in dockerfile
     assert re.search(r"\bapt(?:-get)?\b", dockerfile, re.IGNORECASE) is None
     assert "ARG TARGETARCH" in dockerfile
     assert 'test "$TARGETARCH" = "amd64"' in dockerfile

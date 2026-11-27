@@ -9,13 +9,13 @@ from django.db.migrations.operations.base import Operation
 
 from apps.prescription.migrations._clinical_documents_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField
-from apps.tenancy.migrations._resumable_schema import ResumableSchema
+from apps.tenancy.migration_operations import SeparateDatabaseAndState
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Install protected fields directly, with no plaintext intermediate column."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("prescription", "0011_delegate_confidentiality"),
         ("orders", "0004_matched_patient_authority"),
@@ -115,7 +115,8 @@ class Migration(migrations.Migration):
         migrations.RunSQL(SQL),
     ]
     operations: ClassVar[list[Operation]] = [
-        ResumableSchema(
-            "prescription_documentdraftcontent_draft_id_7033f432", _schema_operations
+        SeparateDatabaseAndState(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
     ]

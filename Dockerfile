@@ -1,4 +1,11 @@
 FROM --platform=linux/amd64 ghcr.io/astral-sh/uv:0.10.6@sha256:2f2ccd27bbf953ec7a9e3153a4563705e41c852a5e1912b438fc44d88d6cb52c AS uv
+FROM --platform=linux/amd64 docker.io/library/postgres:16.14-bookworm@sha256:714b08dd70c05160db032e4321033ac4e5b6328935b2d03ed419c3a898aa8219 AS pg-client
+RUN set -eu; \
+    mkdir -p /clinic-pg/lib; \
+    cp /usr/lib/postgresql/16/bin/pg_dump /clinic-pg/; \
+    ldd /clinic-pg/pg_dump | awk '$2 == "=>" && $3 ~ /^\// && $1 !~ /^lib(c|m|pthread|dl|rt)\.so\./ { print $3 }' | \
+        xargs -r cp -L -t /clinic-pg/lib
+
 FROM --platform=linux/amd64 docker.io/library/python:3.13.14-slim-bookworm@sha256:dd86541a59b252667f4c12f8b2ee17216de37dd65ac773bf097bef996fa78860 AS builder
 
 ARG TARGETARCH
@@ -30,6 +37,9 @@ LABEL clinic.phase1a.image-kind="application" \
 WORKDIR /app
 ENV HOME=/tmp PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONTZPATH="" CLINIC_PROCESS_PURPOSE=web
 COPY --from=builder --chown=10001:10001 /app /app
+COPY --from=pg-client /clinic-pg /opt/clinic-pg
+RUN printf '%s\n' '#!/bin/sh' 'LD_LIBRARY_PATH=/opt/clinic-pg/lib exec /opt/clinic-pg/pg_dump "$@"' \
+      > /usr/local/bin/pg_dump && chmod 0755 /usr/local/bin/pg_dump && pg_dump --version
 USER 10001:10001
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/app/ops/container/entrypoint.sh"]

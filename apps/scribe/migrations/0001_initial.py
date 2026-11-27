@@ -9,18 +9,17 @@ from django.db import migrations, models
 
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations import _capture_sql
-from apps.tenancy.migration_operations import AddConstraint
-from apps.tenancy.migrations._resumable_schema import ResumableSchema
+from apps.tenancy.migration_operations import AddConstraint, SeparateDatabaseAndState
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 _PROTECT = django.db.models.deletion.PROTECT
 _CASCADE = django.db.models.deletion.CASCADE
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Install posture in the first additive migration, before runtime use."""
 
     initial = True
-    atomic = False
     dependencies: ClassVar = [
         ("comms", "0006_action_operations"),
         ("consent", "0005_delegate_purposes"),
@@ -266,14 +265,14 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        ResumableSchema(
-            "scribe_audiochunk_session_id_326484d4",
-            [
+        SeparateDatabaseAndState(
+            database_operations=[
                 SchemaStateBatch(
                     database_operations=_schema_operations,
                     state_operations=_schema_operations,
                 ),
                 migrations.RunSQL(_capture_sql.SQL),
             ],
+            state_operations=_schema_operations,
         ),
     ]

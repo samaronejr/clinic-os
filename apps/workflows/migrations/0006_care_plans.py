@@ -9,22 +9,22 @@ from typing import ClassVar
 from django.conf import settings
 from django.db import migrations
 
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 from apps.workflows.migrations._care_sql import SQL
 from apps.workflows.migrations._care_tables import OPERATIONS
 
 
-class ProtectedSchema(CheckpointedStateBatch):
+class ProtectedSchema(SchemaStateBatch):
     """Publish ciphertext tables and their least-privilege contract together."""
 
     atomic = True
     reversible = False
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Additive only; no active run, task or clinical record is rewritten."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("ehr", "0016_later_pack_draft_guard"),
         ("identity", "0041_retention_authority"),
@@ -40,7 +40,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            receipt="workflows_referral_plan_id_b7dddcbd",
             database_operations=[*OPERATIONS, migrations.RunSQL(SQL)],
             state_operations=OPERATIONS,
         ),

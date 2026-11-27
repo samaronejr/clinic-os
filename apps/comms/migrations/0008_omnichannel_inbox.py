@@ -8,11 +8,12 @@ from django.conf import settings
 from django.db import migrations, models
 
 import apps.tenancy.fields
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.comms.migrations import _inbox_sql
+from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
 
 
-class ProtectedSchema(CheckpointedStateBatch):
+class ProtectedSchema(SchemaStateBatch):
     """Publish the encrypted tables and their posture in one transaction.
 
     Bootstrap default privileges give the runtime role full DML on a new table
@@ -24,13 +25,11 @@ class ProtectedSchema(CheckpointedStateBatch):
     reversible = False
 
 
-class Migration(migrations.Migration):
+class Migration(AtomicSchemaMigration):
     """No plaintext pass or reverse path; rollback = restore.
 
     Reversing would drop every encrypted conversation, message and note.
     """
-
-    atomic = False
 
     dependencies: ClassVar = [
         ("audit", "0005_clinic_metadata_v2"),
@@ -821,7 +820,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            receipt="comms_participant_user_id_d94fd4f3",
             database_operations=[
                 *_schema_operations,
                 migrations.RunSQL(_inbox_sql.SQL),

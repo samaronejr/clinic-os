@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from importlib.util import find_spec
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -29,6 +28,7 @@ from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
+from ops.db.bootstrap_progress import migration_progress_sql
 
 from database_urls import database_url_for_name
 from tenant_key_support import issue_tenant_key_for
@@ -579,8 +579,9 @@ def _scratch_database(
             admin.execute(
                 "CREATE SCHEMA clinic_app AUTHORIZATION clinic_owner; "
                 "REVOKE ALL ON SCHEMA clinic_app FROM PUBLIC, clinic_app, "
-                "clinic_resolver; "
-                "GRANT USAGE ON SCHEMA clinic_app TO clinic_owner, clinic_app; "
+                "clinic_agent, clinic_resolver; "
+                "GRANT USAGE ON SCHEMA clinic_app "
+                "TO clinic_owner, clinic_app, clinic_agent; "
                 "GRANT USAGE, CREATE ON SCHEMA clinic_app TO clinic_resolver; "
                 "ALTER DEFAULT PRIVILEGES FOR ROLE clinic_owner "
                 "IN SCHEMA clinic_app "
@@ -589,15 +590,8 @@ def _scratch_database(
                 "IN SCHEMA clinic_app GRANT USAGE ON SEQUENCES TO clinic_app"
             )
             # This factory bypasses make db-bootstrap. Install exactly the
-            # same administrator-owned header reader and migration-only store.
-            bootstrap = (Path(__file__).parents[2] / "ops/db/bootstrap.sql").read_text(
-                encoding="utf-8"
-            )
-            admin.execute(
-                bootstrap.split("-- BEGIN migration witness bootstrap", 1)[1]
-                .split("\n", 1)[1]
-                .split("-- END migration witness bootstrap", 1)[0]
-            )
+            # same owner-only migration progress store.
+            admin.execute(migration_progress_sql())
         settings_dict = connections["default"].settings_dict.copy()
         settings_dict["NAME"] = name
         wrapper = DatabaseWrapper(settings_dict, alias="migration_scratch")

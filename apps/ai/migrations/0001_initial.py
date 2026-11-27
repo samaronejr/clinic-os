@@ -14,8 +14,11 @@ from apps.ai.migrations import (
     _platform_sql,
     _policy_sql,
 )
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
-from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
+from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.tenancy.migrations._resumable_schema import (
+    GuardedMigration,
+    TransactionScript,
+)
 
 _PURPOSES = (
     "scribe_asr",
@@ -30,11 +33,10 @@ _PROTECT = django.db.models.deletion.PROTECT
 _CASCADE = django.db.models.deletion.CASCADE
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Install exact posture in the first migration, not a later hardening pass."""
 
     initial = True
-    atomic = False
     dependencies: ClassVar = [
         ("comms", "0006_action_operations"),
         ("identity", "0039_ai_policy"),
@@ -345,19 +347,16 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        CheckpointedStateBatch(
-            receipt="ai_aicircuit_configuration_id_e2a0d546",
+        SchemaStateBatch(
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
-        ResumableRunSQL(
+        TransactionScript(
             "BEGIN;\n"
             + _policy_sql.SQL
             + _ledger_sql.SQL
             + _platform_sql.SQL
             + _configuration_sql.SQL
-            + "\nCOMMIT;",
-            table="ai_aiartifact",
-            trigger="ai_artifact_guard",
+            + "\nCOMMIT;"
         ),
     ]

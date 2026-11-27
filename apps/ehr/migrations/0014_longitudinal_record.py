@@ -12,6 +12,7 @@ from django.db import migrations, models
 import apps.tenancy.fields
 from apps.ehr.migrations._longitudinal_contract_sql import CONTRACT
 from apps.ehr.migrations._longitudinal_operations import ProtectedSchema
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 if TYPE_CHECKING:
     from django.db.migrations.operations.base import Operation
@@ -394,10 +395,9 @@ MODELS: list[Operation] = [
 ]
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """No plaintext pass or reverse path; rollback = restore."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("ehr", "0013_template_v2"),
         ("identity", "0034_encounter_permission_bundle"),
@@ -406,7 +406,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar[list[Operation]] = [
         ProtectedSchema(
-            receipt="ehr_timelinerefresh_patient_id_97a51538",
             database_operations=[*MODELS, migrations.RunSQL(CONTRACT)],
             state_operations=MODELS,
         ),

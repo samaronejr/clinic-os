@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, ClassVar
 
 from django.db import migrations
 
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.insurance.migrations._relationship_validation_sql import (
     RELAX_FORCE_SQL,
     RESTORE_FORCE_SQL,
 )
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 from . import _insurance_sql
 from ._schema import MODELS
@@ -62,17 +63,16 @@ def finish_foreign_keys(
         schema_editor.execute(RESTORE_FORCE_SQL.format(table=table))
 
 
-class ProtectedSchema(CheckpointedStateBatch):
+class ProtectedSchema(SchemaStateBatch):
     """Publish all encrypted tables, state guards and least privileges atomically."""
 
     atomic = True
     reversible = False
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """No plaintext conversion and no reverse operation that can destroy history."""
 
-    atomic = False
     initial = True
     dependencies: ClassVar = [
         ("identity", "0047_insurance_approval_permission"),
@@ -84,7 +84,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar[Sequence[Operation]] = [
         ProtectedSchema(
-            receipt="insurance_commandreceipt_organization_id_af502bd3",
             database_operations=[
                 *MODELS,
                 migrations.RunPython(finish_foreign_keys, reverse_code=None),

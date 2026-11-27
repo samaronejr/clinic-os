@@ -6,27 +6,26 @@ from django.db import migrations
 
 from apps.ai.migrations import _extraction_review_sql, _extraction_sql
 from apps.ai.migrations._extraction_tables import OPERATIONS
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
+from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
 
 
-class ProtectedSchema(CheckpointedStateBatch):
+class ProtectedSchema(SchemaStateBatch):
     """Publish ciphertext tables and the complete least-privilege contract together."""
 
     atomic = True
     reversible = False
 
 
-class Migration(migrations.Migration):
+class Migration(AtomicSchemaMigration):
     """Never weaken existing source immutability or identity matching."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("ai", "0003_artifact_retention"),
         ("orders", "0004_matched_patient_authority"),
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            receipt="ai_extractioncandidate_reviewed_by_id_ddd44112",
             database_operations=[
                 *OPERATIONS,
                 migrations.RunSQL(_extraction_sql.SQL + _extraction_review_sql.SQL),

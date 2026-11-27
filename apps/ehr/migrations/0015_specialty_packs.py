@@ -12,6 +12,7 @@ from django.db import migrations, models
 import apps.tenancy.fields
 from apps.ehr.migrations._longitudinal_operations import ProtectedSchema
 from apps.ehr.migrations._pack_sql import SQL
+from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
 
 if TYPE_CHECKING:
     from django.db.migrations.operations.base import Operation
@@ -142,17 +143,15 @@ MODELS: list[Operation] = [
 ]
 
 
-class Migration(migrations.Migration):
+class Migration(AtomicSchemaMigration):
     """Publish the protected table and its least-privilege contract atomically."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("ehr", "0014_longitudinal_record"),
         ("intake", "0015_questionnaire_branching"),
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            receipt="ehr_specialtyentry_recorded_by_id_cc984f80",
             database_operations=[*MODELS, migrations.RunSQL(SQL)],
             state_operations=MODELS,
         ),

@@ -11,7 +11,7 @@ from django.db.migrations.operations.base import Operation
 from apps.prescription.migrations._class_catalog_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField
 from apps.tenancy.migration_operations import SeparateDatabaseAndState
-from apps.tenancy.migrations._resumable_schema import CheckpointedSchema
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 CLASSES = [
     ("simple", "Simple prescription"),
@@ -45,17 +45,16 @@ VALUES
 """
 
 
-class ProtectedSchema(CheckpointedSchema, SeparateDatabaseAndState):
+class ProtectedSchema(SeparateDatabaseAndState):
     """Publish encrypted fields, grants and local-role SQL in one transaction."""
 
     atomic = True
     reversible = False
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Install encrypted columns directly and preserve every synthetic artifact."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("prescription", "0012_clinical_document_kinds"),
         ("ehr", "0014_longitudinal_record"),
@@ -299,7 +298,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar[list[Operation]] = [
         ProtectedSchema(
-            receipt="prescription_medicationfavorite_entry_id_b8d050ff",
             database_operations=schema_operations,
             state_operations=[
                 operation

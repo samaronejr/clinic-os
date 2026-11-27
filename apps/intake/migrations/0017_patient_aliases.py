@@ -16,7 +16,8 @@ from apps.intake.migrations._patient_alias_operations import (
     ALIAS_OPERATION,
     TRANSFER_OPERATION,
 )
-from apps.tenancy.migrations._resumable_schema import ResumableSchema
+from apps.tenancy.migration_operations import SeparateDatabaseAndState
+from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
 
 if TYPE_CHECKING:
     from django.apps.registry import Apps
@@ -31,10 +32,9 @@ def install_alias_contract(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) 
         cursor.execute(ALIAS_SQL)
 
 
-class Migration(migrations.Migration):
+class Migration(AtomicSchemaMigration):
     """Preserve protected identity history; rollback requires restore."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("intake", "0016_duplicate_detection"),
         ("identity", "0024_lifecycle_function_privileges"),
@@ -46,7 +46,8 @@ class Migration(migrations.Migration):
         migrations.RunPython(install_alias_contract, atomic=True),
     ]
     operations: ClassVar[list[Operation]] = [
-        ResumableSchema(
-            "intake_patientmergetransfer_merge_decision_id_a673f544", _schema_operations
+        SeparateDatabaseAndState(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
     ]

@@ -7,13 +7,13 @@ from django.db import migrations
 
 from apps.interop.migrations._import_sql import SQL
 from apps.interop.migrations._schema import MODELS, ProtectedSchema
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Irreversible protected schema; rollback requires a restore."""
 
     initial = True
-    atomic = False
     # Dependencies are only what this migration touches when it runs: the user,
     # clinic and patient tables and has_permission (identity), intake's latest
     # node (its enrollment and duplicate-candidate tables get the restrictive
@@ -30,7 +30,6 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar = [
         ProtectedSchema(
-            receipt="interop_importtransition_organization_id_ac1a5fc4",
             database_operations=[*MODELS, migrations.RunSQL(SQL)],
             state_operations=MODELS,
         ),

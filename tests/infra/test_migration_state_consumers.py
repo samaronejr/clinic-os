@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 import pytest
-from apps.ai.migrations._state_batch import CheckpointedStateBatch, SchemaStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from django.db import connection, migrations, models
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.optimizer import MigrationOptimizer
@@ -122,7 +121,7 @@ def test_evaluation_batch_metadata_reaches_schema_and_python_consumers() -> None
     loader = MigrationLoader(None)
     migration = loader.disk_migrations["ai", "0005_evaluation"]
     batch = migration.operations[0]
-    assert isinstance(batch, CheckpointedStateBatch)
+    assert isinstance(batch, SchemaStateBatch)
     assert batch.atomic is True
     assert batch.reversible is False
     before = loader.project_state(migration.dependencies)
@@ -169,7 +168,7 @@ def test_evaluation_batch_metadata_reaches_schema_and_python_consumers() -> None
                 model_name="evaluationrun", constraint=constraint
             )
             make_batch = (
-                partial(type(batch), receipt=batch.receipt)
+                type(batch)
                 if operation is batch
                 else migrations.SeparateDatabaseAndState
             )

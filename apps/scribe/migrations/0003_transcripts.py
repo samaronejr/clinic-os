@@ -7,20 +7,22 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations._transcript_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.migration_operations import AddConstraint
-from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
+from apps.tenancy.migrations._resumable_schema import (
+    GuardedMigration,
+    TransactionScript,
+)
 
 _PROTECT = django.db.models.deletion.PROTECT
 _CASCADE = django.db.models.deletion.CASCADE
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Install FORCE RLS, exact grants and immutable guards before runtime use."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("scribe", "0002_ai_disclosure_capture"),
         ("ai", "0001_initial"),
@@ -218,14 +220,9 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        CheckpointedStateBatch(
-            receipt="scribe_transcriptsegment_chunk_id_17604823",
+        SchemaStateBatch(
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
-        ResumableRunSQL(
-            SQL,
-            table="scribe_chunktranscription",
-            trigger="transcript_no_truncate",
-        ),
+        TransactionScript(SQL),
     ]

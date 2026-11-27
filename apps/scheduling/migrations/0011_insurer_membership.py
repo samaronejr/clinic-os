@@ -5,22 +5,20 @@ from typing import ClassVar
 from django.db import migrations, models
 
 from apps.insurance.migrations._scheduling_sql import SQL
-from apps.tenancy.migrations._resumable_schema import AtomicRunSQL
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Repeatable, non-destructive integration; invalid old references stop upgrade."""
 
-    atomic = False
     dependencies: ClassVar = [
         ("scheduling", "0010_patient_service_booking"),
         ("intake", "0029_membership_payer"),
         ("insurance", "0001_revenue_cycle"),
     ]
     operations: ClassVar = [
-        AtomicRunSQL(
+        migrations.RunSQL(
             SQL,
-            receipt="insurer-membership:0",
             state_operations=[
                 # Only state changes its name; the existing UUID column stays.
                 migrations.RemoveField("appointment", "payer_membership_id"),

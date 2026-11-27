@@ -12,14 +12,12 @@ from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
 from apps.identity.migrations._lifecycle_sql import FORWARD_SQL
-from apps.tenancy.migration_operations import AddConstraint
-from apps.tenancy.migrations._resumable_schema import ResumableSchema
+from apps.tenancy.migration_operations import AddConstraint, SeparateDatabaseAndState
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
-class Migration(migrations.Migration):
+class Migration(GuardedMigration):
     """Keep protected state and authority history irreversibly."""
-
-    atomic = False
 
     dependencies: ClassVar[Sequence[tuple[str, str]]] = [
         ("comms", "0006_action_operations"),
@@ -474,7 +472,8 @@ class Migration(migrations.Migration):
         migrations.RunSQL(FORWARD_SQL),
     ]
     operations: ClassVar[Sequence[Operation]] = [
-        ResumableSchema(
-            "identity_staffinvitation_pending_user_id_f3f281e6", _schema_operations
+        SeparateDatabaseAndState(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
     ]

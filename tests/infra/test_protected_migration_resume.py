@@ -1,26 +1,34 @@
-"""Interrupt real PostgreSQL commits and retry without faking a migration row."""
+"""Run the guarded command from real, independently observed commit boundaries."""
 
 from __future__ import annotations
 
+import io
 import json
 import os
-import re
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from datetime import date, timedelta
+from hashlib import sha256
+from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
 import pytest
-from apps.tenancy.migrations._resume_catalog import FIXTURE
-from django.db import DatabaseError, connections, transaction
+from apps.tenancy import migration_preflight
+from apps.tenancy.migrations import _resumable_schema as recovery
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db import connections, transaction
 from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
+from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 from psycopg import sql
 
-from infra.resume_catalog_capture import capture, merged
+from database_urls import database_url_for_name
 from patients.test_intake_migrations import (
     _default_connection,
     _scratch_database,
@@ -29,537 +37,445 @@ from patients.test_intake_migrations import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from uuid import UUID
 
+    from django.db.backends.base.base import BaseDatabaseWrapper
+    from django.db.migrations import Migration
     from django.db.migrations.state import ProjectState
     from pytest_django.plugin import DjangoDbBlocker
-
-type Target = tuple[str, str]
 
 INTAKE = ("intake", "0013_patient_demographics")
 AI = ("ai", "0003_artifact_retention")
 
-# Use deparsed definitions, not OIDs or FK implementation-trigger names:
-# each database allocates its own object identities.
-CATALOG = """
-WITH rels AS (
-    SELECT * FROM pg_class WHERE relnamespace = 'clinic_app'::regnamespace
-), facts AS (
-    SELECT 'relation', relname::text,
-           jsonb_build_array(relkind, relrowsecurity, relforcerowsecurity,
-                             pg_get_userbyid(relowner), relacl::text) AS definition
-    FROM rels WHERE relkind IN ('r', 'p', 'v', 'm', 'S')
-    UNION ALL
-    SELECT 'column', relname || '.' || attname,
-           jsonb_build_array(format_type(atttypid, atttypmod), attnotnull,
-                             attacl::text, pg_get_expr(adbin, adrelid),
-                             attstorage, attcompression, attnum, atthasmissing,
-                             attmissingval::text, attgenerated)
-    FROM pg_attribute JOIN rels ON attrelid = rels.oid
-    LEFT JOIN pg_attrdef ON adrelid = attrelid AND adnum = attnum
-    WHERE attnum > 0 AND NOT attisdropped AND relkind IN ('r', 'p', 'v', 'm')
-    UNION ALL
-    SELECT 'policy', tablename || '.' || policyname,
-           jsonb_build_array(permissive, roles, cmd, qual, with_check)
-    FROM pg_policies WHERE schemaname = 'clinic_app'
-    UNION ALL
-    SELECT 'constraint', relname || '.' || conname,
-           jsonb_build_array(convalidated, pg_get_constraintdef(c.oid))
-    FROM pg_constraint AS c JOIN rels ON conrelid = rels.oid
-    UNION ALL
-    SELECT 'trigger', relname || '.' || tgname,
-           jsonb_build_array(tgenabled, pg_get_triggerdef(t.oid))
-    FROM pg_trigger AS t JOIN rels ON tgrelid = rels.oid WHERE NOT tgisinternal
-    UNION ALL
-    SELECT 'index', rels.relname || '.' || i.relname,
-           jsonb_build_array(indisvalid, pg_get_indexdef(indexrelid))
-    FROM pg_index JOIN rels ON indrelid = rels.oid
-    JOIN pg_class AS i ON i.oid = indexrelid
-    UNION ALL
-    SELECT 'function', p.oid::regprocedure::text,
-           jsonb_build_array(pg_get_functiondef(p.oid),
-                             pg_get_userbyid(proowner), proacl::text)
-    FROM pg_proc AS p WHERE pronamespace = 'clinic_app'::regnamespace
-     AND prokind IN ('f', 'p')
-)
-SELECT * FROM facts ORDER BY 1, 2, 3
-"""
+
+class InterruptionError(Exception):
+    """Simulate a lost client after PostgreSQL commits but before Django records."""
 
 
-class SimulatedInterruptionError(Exception):
-    """Simulated process death after a committed database change."""
+def _guarded() -> dict[recovery.MigrationKey, int]:
+    return {
+        key: len(migration.operations)
+        for key, migration in MigrationLoader(None).disk_migrations.items()
+        if isinstance(migration, recovery.GuardedMigration)
+    }
+
+
+def _applied(db: DatabaseWrapper) -> set[recovery.MigrationKey]:
+    return set(MigrationExecutor(db).recorder.applied_migrations())
 
 
 @contextmanager
 def _clone(admin_url: str, source: DatabaseWrapper) -> Iterator[DatabaseWrapper]:
     name = f"mig_resume_{uuid4().hex[:12]}"
-    source.close()  # A database serving as a template must have no connections.
+    source.close()
     with psycopg.connect(admin_url, autocommit=True) as admin:
         admin.execute(
             sql.SQL("CREATE DATABASE {} OWNER clinic_owner TEMPLATE {}").format(
                 sql.Identifier(name), sql.Identifier(source.settings_dict["NAME"])
             )
         )
-        # A cut can itself be a template for multiple independent retries.
-        # Do not replace the outer clone's connection registration.
-        clone = DatabaseWrapper({**source.settings_dict, "NAME": name}, alias=name)
-        connections[clone.alias] = clone
+        db = DatabaseWrapper({**source.settings_dict, "NAME": name}, alias=name)
+        connections[db.alias] = db
         try:
-            with _default_connection(clone):
-                yield clone
+            yield db
         finally:
-            clone.close()
-            del connections[clone.alias]
-            admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
+            db.close()
+            del connections[db.alias]
+            admin.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+            )
 
 
-def _catalog(db: DatabaseWrapper) -> list[tuple[object, ...]]:
-    with db.cursor() as cursor:
-        cursor.execute(CATALOG)
-        results: list[tuple[object, ...]] = cursor.fetchall()
-    return results
+@dataclass(frozen=True)
+class Plan:
+    admin_url: str
+    source: dict[recovery.MigrationKey, DatabaseWrapper]
+    head_schema: str
+    head_ledger: set[recovery.MigrationKey]
+
+
+@pytest.fixture(scope="module")
+def plan(django_db_blocker: DjangoDbBlocker) -> Iterator[Plan]:
+    """Build each predecessor by walking an ordinary all-leaves plan once."""
+    admin_url = os.environ["TEST_SUPERUSER_DATABASE_URL"]
+    with (
+        django_db_blocker.unblock(),
+        ExitStack() as templates,
+        _scratch_database(admin_url) as db,
+        _default_connection(db),
+    ):
+        source: dict[recovery.MigrationKey, DatabaseWrapper] = {}
+
+        def before(action: str, *args: object) -> None:
+            if action == "apply_start" and isinstance(
+                args[0], recovery.GuardedMigration
+            ):
+                migration = args[0]
+                source[migration.app_label, migration.name] = templates.enter_context(
+                    _clone(admin_url, db)
+                )
+
+        executor = MigrationExecutor(db, progress_callback=before)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        assert source.keys() == _guarded().keys()
+        yield Plan(
+            admin_url, source, migration_preflight.schema_digest(db), _applied(db)
+        )
+
+
+def _run(db: DatabaseWrapper) -> None:
+    with _default_connection(db):
+        call_command("migrate", interactive=False, verbosity=0, stdout=io.StringIO())
+
+
+def _cut(
+    db: DatabaseWrapper,
+    admin_url: str,
+    key: recovery.MigrationKey,
+    step: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    committed = Event()
+    record = recovery.record_step
+
+    def record_and_interrupt(
+        connection: BaseDatabaseWrapper, migration: recovery.MigrationKey, ordinal: int
+    ) -> None:
+        record(connection, migration, ordinal)
+        if (migration, ordinal) != (key, step):
+            return
+
+        def stop() -> None:
+            # Re-read from another session: a Python call before COMMIT does not
+            # count, nor does a cut after Django's migration recorder insertion.
+            with psycopg.connect(
+                database_url_for_name(admin_url, db.settings_dict["NAME"])
+            ) as observer:
+                rows = observer.execute(
+                    "SELECT step FROM clinic_migration.progress "
+                    "WHERE app=%s AND name=%s ORDER BY step",
+                    key,
+                ).fetchall()
+                assert rows == [(n,) for n in range(1, step + 1)]
+                assert (
+                    observer.execute(
+                        "SELECT 1 FROM clinic_app.django_migrations "
+                        "WHERE app=%s AND name=%s",
+                        key,
+                    ).fetchone()
+                    is None
+                )
+            committed.set()
+            raise InterruptionError
+
+        connection.on_commit(stop)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(recovery, "record_step", record_and_interrupt)
+        with pytest.raises(InterruptionError):
+            _run(db)
+    assert committed.is_set()
+    db.close()
 
 
 def _seed(
-    db: DatabaseWrapper,
-    state: ProjectState,
-    target: Target,
-    *,
-    artifact_content: str = "Synthetic AI fixture",
-    organization_id: UUID | None = None,
-) -> Callable[[DatabaseWrapper], tuple[object, ...]]:
-    """Write a protected row through the pre-migration authorities."""
-    registry = state.apps
-    org_id = organization_id or uuid4()
-    with transaction.atomic(using=db.alias), db.cursor() as cursor:
-        cursor.execute(
-            "SELECT set_config('app.current_tenant', %s, true)", [str(org_id)]
+    db: DatabaseWrapper, key: recovery.MigrationKey
+) -> Callable[[], tuple[object, ...]]:
+    """Use actual historical ORM fields, key issuance and RLS to seed a row."""
+    loader = MigrationLoader(db)
+    registry = loader.project_state(list(loader.applied_migrations)).apps
+    org = uuid4()
+    with (
+        _default_connection(db),
+        transaction.atomic(using=db.alias),
+        db.cursor() as cursor,
+    ):
+        cursor.execute("SELECT set_config('app.current_tenant', %s, true)", [str(org)])
+        registry.get_model("identity", "Organization").objects.using(db.alias).create(
+            id=org, name="Synthetic Migration Race", cnpj=f"{org.int % 10**14:014d}"
         )
-        registry.get_model("identity", "Organization").objects.create(
-            id=org_id,
-            name="Synthetic Migration Resume",
-            cnpj=f"{org_id.int % 10**14:014d}",
-        )
-        _scratch_tenant_key(db, org_id)
-        if target == INTAKE:
-            row = registry.get_model("intake", "Patient").objects.create(
-                organization_id=org_id,
-                full_name="Synthetic Patient",
-                birth_date=date(2001, 1, 1),
+        _scratch_tenant_key(db, org)
+        if key == AI:
+            clinic = (
+                registry.get_model("identity", "Clinic")
+                .objects.using(db.alias)
+                .create(
+                    organization_id=org,
+                    name="Synthetic Clinic",
+                    crm_uf="SP",
+                    timezone="America/Sao_Paulo",
+                )
             )
-            columns = "full_name, birth_date"
-            table = "intake_patient"
-        else:
-            clinic = registry.get_model("identity", "Clinic").objects.create(
-                organization_id=org_id,
-                name="Synthetic Clinic",
-                crm_uf="SP",
-                timezone="America/Sao_Paulo",
+            user = (
+                registry.get_model("identity", "User")
+                .objects.using(db.alias)
+                .create(username=f"synthetic-resume-{org.hex}")
             )
-            user = registry.get_model("identity", "User").objects.create(
-                username=f"synthetic-resume-{org_id.hex}"
-            )
-            registry.get_model("identity", "UserClinicRole").objects.create(
-                user_id=user.pk,
-                clinic_id=clinic.pk,
-                organization_id=org_id,
-                role="owner",
+            registry.get_model("identity", "UserClinicRole").objects.using(
+                db.alias
+            ).create(
+                user_id=user.pk, clinic_id=clinic.pk, organization_id=org, role="owner"
             )
             cursor.execute(
                 "SELECT set_config('app.current_user_id', %s, true)", [str(user.pk)]
             )
-            row = registry.get_model("ai", "AIArtifact").objects.create(
-                organization_id=org_id,
-                clinic_id=clinic.pk,
-                user_id=user.pk,
-                purpose="front_desk",
-                retention_class="transient_input",
-                content=artifact_content,
-                expires_at=timezone.now() + timedelta(days=1),
+            item = (
+                registry.get_model("ai", "AIArtifact")
+                .objects.using(db.alias)
+                .create(
+                    organization_id=org,
+                    clinic_id=clinic.pk,
+                    user_id=user.pk,
+                    purpose="front_desk",
+                    retention_class="transient_input",
+                    content="Synthetic migration artifact",
+                    expires_at=timezone.now() + timedelta(days=1),
+                )
             )
-            columns = "content, retention_class"
-            table = "ai_aiartifact"
-
-    def read_bytes(connection: DatabaseWrapper) -> tuple[object, ...]:
-        with transaction.atomic(using=connection.alias), connection.cursor() as cur:
-            cur.execute(
-                "SELECT set_config('app.current_tenant', %s, true)", [str(org_id)]
+            read_sql = (
+                "SELECT content, retention_class "
+                "FROM clinic_app.ai_aiartifact WHERE id=%s"
             )
-            cur.execute(
-                sql.SQL("SELECT {} FROM clinic_app.{} WHERE id = %s").format(
-                    sql.SQL(columns), sql.Identifier(table)
-                ),
-                [row.pk],
+        else:
+            item = (
+                registry.get_model("intake", "Patient")
+                .objects.using(db.alias)
+                .create(
+                    organization_id=org,
+                    full_name="Synthetic Migration Patient",
+                    birth_date=date(2001, 1, 1),
+                )
             )
-            result: tuple[object, ...] | None = cur.fetchone()
-        assert result is not None
-        assert result[0]
-        return result
+            read_sql = (
+                "SELECT full_name, birth_date FROM clinic_app.intake_patient "
+                "WHERE id=%s"
+            )
 
-    return read_bytes
+    def read() -> tuple[object, ...]:
+        with transaction.atomic(using=db.alias), db.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_tenant', %s, true)", [str(org)]
+            )
+            cursor.execute(read_sql, [item.pk])
+            row: tuple[object, ...] | None = cursor.fetchone()
+        assert row is not None
+        assert row[0]
+        return row
 
-
-def _apply_with_cut(
-    db: DatabaseWrapper,
-    target: Target,
-    monkeypatch: pytest.MonkeyPatch,
-    stop: int | None = None,
-) -> list[str]:
-    """Count real commits and autocommitted writes, including the baseline DDL."""
-    executor = MigrationExecutor(db)
-    assert [(m.app_label, m.name) for m, _ in executor.migration_plan([target])] == [
-        target
-    ]
-    boundaries: list[str] = []
-
-    def boundary(label: str) -> None:
-        boundaries.append(label)
-        if len(boundaries) == stop:
-            raise SimulatedInterruptionError(label)
-
-    original_commit = db.commit
-
-    def commit() -> None:
-        original_commit()
-        boundary("transaction commit")
-
-    def execute(
-        run: Callable[..., object],
-        statement: object,
-        params: object,
-        many: bool,
-        context: dict[str, object],
-    ) -> object:
-        result = run(statement, params, many, context)
-        command = str(statement).lstrip().upper()
-        if (
-            db.get_autocommit()
-            and not command.startswith('INSERT INTO "DJANGO_MIGRATIONS"')
-            and command.startswith(("ALTER ", "BEGIN", "CREATE ", "DROP ", "DO "))
-        ):
-            boundary(command.split()[0])
-        return result
-
-    with monkeypatch.context() as patch, db.execute_wrapper(execute):
-        patch.setattr(db, "commit", commit)
-        executor.migrate([target])
-    return boundaries
-
-
-@pytest.mark.parametrize("target", [INTAKE, AI], ids=["intake-0013", "ai-0003"])
-def test_resume_after_each_committed_boundary(
-    target: Target, django_db_blocker: DjangoDbBlocker, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    admin_url = os.environ["TEST_SUPERUSER_DATABASE_URL"]
-    with (
-        django_db_blocker.unblock(),
-        _scratch_database(admin_url) as template,
-        _default_connection(template),
-    ):
-        executor = MigrationExecutor(template)
-        parents = sorted(
-            node.key for node in executor.loader.graph.node_map[target].parents
-        )
-        before_posture = executor.migrate(parents)
-        read_bytes = _seed(template, before_posture, target)
-        protected_bytes = read_bytes(template)
-
-        with _clone(admin_url, template) as uninterrupted:
-            boundaries = _apply_with_cut(uninterrupted, target, monkeypatch)
-            expected = _catalog(uninterrupted)
-            assert read_bytes(uninterrupted) == protected_bytes
-            assert expected
-
-        assert boundaries
-        for stop in range(1, len(boundaries) + 1):
-            with _clone(admin_url, template) as interrupted:
-                with pytest.raises(SimulatedInterruptionError):
-                    _apply_with_cut(interrupted, target, monkeypatch, stop)
-                # Reopen without any session or Python checkpoint.
-                interrupted.close()
-                executor = MigrationExecutor(interrupted)
-                assert target not in executor.loader.applied_migrations
-                _apply_with_cut(interrupted, target, monkeypatch)
-                executor = MigrationExecutor(interrupted)
-                assert target in executor.loader.applied_migrations
-                assert _catalog(interrupted) == expected, (target, stop)
-                assert read_bytes(interrupted) == protected_bytes
-                migration = executor.loader.get_migration(*target)
-                with (
-                    interrupted.schema_editor(atomic=False) as editor,
-                    pytest.raises(IrreversibleError),
-                ):
-                    migration.unapply(before_posture.clone(), editor)
-                assert _catalog(interrupted) == expected
+    return read
 
 
 @pytest.mark.parametrize(
-    ("cut", "object_name", "drift"),
+    ("key", "step"),
+    [
+        pytest.param(key, step, id=f"{'.'.join(key)}-commit-{step}")
+        for key, length in _guarded().items()
+        for step in range(1, length + 1)
+    ],
+)
+def test_resume_after_each_committed_boundary(
+    key: recovery.MigrationKey, step: int, plan: Plan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _clone(plan.admin_url, plan.source[key]) as db:
+        read = _seed(db, key) if key in (INTAKE, AI) else tuple
+        original = read()
+        _cut(db, plan.admin_url, key, step, monkeypatch)
+        assert key not in _applied(db)
+        _run(db)
+        assert _applied(db) == plan.head_ledger
+        assert migration_preflight.schema_digest(db) == plan.head_schema
+        assert read() == original
+
+
+def _assert_refused(db: DatabaseWrapper, admin_url: str, message: str) -> None:
+    rows = _row_image(db, admin_url)
+    schema = migration_preflight.schema_digest(db)
+    with pytest.raises(CommandError, match=message):
+        _run(db)
+    assert _row_image(db, admin_url) == rows
+    assert migration_preflight.schema_digest(db) == schema
+
+
+def _row_image(db: DatabaseWrapper, admin_url: str) -> str:
+    """Observe every user row, sequence, receipt and exact Django ledger row."""
+    digest = sha256()
+    dsn = database_url_for_name(admin_url, db.settings_dict["NAME"])
+    with psycopg.connect(dsn) as observer:
+        relations = observer.execute(
+            """
+            SELECT n.nspname, c.relname
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                AND n.nspname NOT LIKE 'pg_toast%%'
+                AND c.relkind IN ('r', 'S', 'm')
+            ORDER BY 1, 2
+            """
+        ).fetchall()
+        for namespace, table in relations:
+            rows = observer.execute(
+                sql.SQL("SELECT to_jsonb(r)::text FROM {} r ORDER BY 1").format(
+                    sql.Identifier(namespace, table)
+                )
+            ).fetchall()
+            digest.update(json.dumps([namespace, table, rows]).encode())
+    return digest.hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("sql_mutation", "message"),
     [
         pytest.param(
-            (INTAKE, 2),
-            "intake_patientdemographics.tenant_isolation",
-            """
-            ALTER TABLE clinic_app.intake_patientdemographics ENABLE ROW LEVEL SECURITY;
-            ALTER TABLE clinic_app.intake_patientdemographics FORCE ROW LEVEL SECURITY;
-            CREATE POLICY tenant_isolation ON clinic_app.intake_patientdemographics
-                AS PERMISSIVE FOR ALL TO PUBLIC USING (false) WITH CHECK (false);
-            """,
-            id="reviewer-deny-only-policy",
+            "DELETE FROM clinic_migration.progress WHERE app='intake' AND "
+            "name='0013_patient_demographics'",
+            "entry logical schema differs.*restore or rebuild",
+            id="drop-progress",
         ),
         pytest.param(
-            (INTAKE, 3),
-            "intake_policy_org_clinic_fk",
-            """
-            ALTER TABLE clinic_app.intake_clinicintakepolicy
-                DROP CONSTRAINT intake_policy_org_clinic_fk,
-                ADD CONSTRAINT intake_policy_org_clinic_fk CHECK (true);
-            """,
-            id="constraint",
+            "UPDATE clinic_migration.progress SET step=100 WHERE app='intake' "
+            "AND name='0013_patient_demographics' AND step=2",
+            "invalid progress prefix.*restore or rebuild",
+            id="corrupt-progress",
         ),
         pytest.param(
-            (INTAKE, 1),
-            "intake_patientaddress_patient_id_e3f08661",
-            """
-            DROP INDEX clinic_app.intake_patientaddress_patient_id_e3f08661;
-            CREATE INDEX intake_patientaddress_patient_id_e3f08661
-                ON clinic_app.intake_patientaddress (organization_id);
-            """,
-            id="index",
+            "INSERT INTO clinic_migration.progress VALUES "
+            "('intake', '0013_patient_demographics', 3)",
+            "entry logical schema differs.*restore or rebuild",
+            id="skip-step",
         ),
         pytest.param(
-            (INTAKE, 11),
-            "intake_patientdemographics_append_only",
-            """
-            ALTER TABLE clinic_app.intake_patientdemographics
-                DISABLE TRIGGER intake_patientdemographics_append_only;
-            """,
-            id="trigger",
-        ),
-        pytest.param(
-            (INTAKE, 11),
-            "intake_identity_append_only_v1",
-            """
-            CREATE OR REPLACE FUNCTION clinic_app.intake_identity_append_only_v1()
-            RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, clinic_app
-            AS $$ BEGIN RETURN NEW; END; $$;
-            """,
-            id="function",
-        ),
-        pytest.param(
-            (INTAKE, 16),
-            "intake_patientdemographics",
-            "GRANT DELETE ON clinic_app.intake_patientdemographics TO clinic_app;",
-            id="grant",
-        ),
-        pytest.param(
-            (AI, 1),
-            "ai_aiartifact.purged_at",
-            """
-            ALTER TABLE clinic_app.ai_aiartifact
-                ALTER COLUMN purged_at SET DEFAULT pg_catalog.now();
-            """,
-            id="column",
-        ),
-        pytest.param(
-            (AI, 1),
-            "ai_artifact_values",
-            """
-            ALTER TABLE clinic_app.ai_aiartifact
-                DROP CONSTRAINT ai_artifact_values,
-                ADD CONSTRAINT ai_artifact_values CHECK (true);
-            """,
-            id="replacement-check",
-        ),
-        pytest.param(
-            (INTAKE, 1),
-            "intake_patientdemographics.review_extra_required",
-            """
-            ALTER TABLE clinic_app.intake_patientdemographics
-                ADD COLUMN review_extra_required integer NOT NULL;
-            """,
-            id="extra-required-column",
-        ),
-        pytest.param(
-            (INTAKE, 1),
-            "intake_patientdemographics.review_extra_index",
-            """
-            CREATE INDEX review_extra_index
-                ON clinic_app.intake_patientdemographics (organization_id);
-            """,
-            id="extra-index",
-        ),
-        pytest.param(
-            (AI, 1),
-            "ai_aiartifact.grants",
-            "GRANT DELETE ON clinic_app.ai_aiartifact TO clinic_app;",
-            id="extra-grant",
-        ),
-        pytest.param(
-            (INTAKE, 11),
-            "intake_identity_append_only_v1",
-            "ALTER FUNCTION clinic_app.intake_identity_append_only_v1() STABLE",
-            id="unchanged-body-volatility",
-        ),
-        pytest.param(
-            (INTAKE, 14),
-            "patient_registry_count",
-            "ALTER FUNCTION clinic_app.patient_registry_count(text,uuid,text,date) "
-            "SECURITY INVOKER",
-            id="unchanged-body-security",
-        ),
-        pytest.param(
-            (INTAKE, 4),
-            "intake_patientdemographics.tenant_isolation.polpermissive",
-            """
-            DROP POLICY tenant_isolation ON clinic_app.intake_patientdemographics;
-            CREATE POLICY tenant_isolation ON clinic_app.intake_patientdemographics
-              AS RESTRICTIVE FOR ALL TO PUBLIC USING (organization_id =
-                NULLIF(current_setting('app.current_tenant', true), '')::uuid)
-              WITH CHECK (organization_id =
-                NULLIF(current_setting('app.current_tenant', true), '')::uuid);
-            """,
-            id="unchanged-predicates-restrictive",
-        ),
-        pytest.param(
-            (AI, 1),
-            "ai_aiartifact.purged_at",
-            """
-            ALTER TABLE clinic_app.ai_aiartifact DROP COLUMN purged_at;
-            ALTER TABLE clinic_app.ai_aiartifact ADD COLUMN purged_at timestamptz
-              GENERATED ALWAYS AS ('2001-01-01T00:00:00Z'::timestamptz) STORED;
-            """,
-            id="generated-expression",
+            "CREATE TABLE public.unexpected_f6_object (id integer)",
+            "entry logical schema differs.*restore or rebuild",
+            id="unexpected-object",
         ),
     ],
 )
-def test_resume_refuses_conflicting_catalog(
-    cut: tuple[Target, int],
-    object_name: str,
-    drift: str,
-    django_db_blocker: DjangoDbBlocker,
-    monkeypatch: pytest.MonkeyPatch,
+def test_refuse_unexplained_cut_before_writing(
+    sql_mutation: str, message: str, plan: Plan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    target, stop = cut
-    admin_url = os.environ["TEST_SUPERUSER_DATABASE_URL"]
-    with (
-        django_db_blocker.unblock(),
-        _scratch_database(admin_url) as template,
-        _default_connection(template),
-    ):
-        executor = MigrationExecutor(template)
-        parents = sorted(
-            node.key for node in executor.loader.graph.node_map[target].parents
-        )
-        state = executor.migrate(parents)
-        read_bytes = _seed(template, state, target)
-        protected = read_bytes(template)
+    with _clone(plan.admin_url, plan.source[INTAKE]) as db:
+        _seed(db, INTAKE)
+        _cut(db, plan.admin_url, INTAKE, 2, monkeypatch)
+        with db.cursor() as cursor:
+            cursor.execute(sql_mutation)
+        _assert_refused(db, plan.admin_url, message)
 
-        reference = None
-        if stop == 2 and target == INTAKE:
-            with _clone(admin_url, template) as clean:
-                _apply_with_cut(clean, target, monkeypatch)
-                reference = _catalog(clean)
 
-        with _clone(admin_url, template) as interrupted:
-            with pytest.raises(SimulatedInterruptionError):
-                _apply_with_cut(interrupted, target, monkeypatch, stop)
-            interrupted.close()
-            assert target not in (
-                MigrationExecutor(interrupted).loader.applied_migrations
+def test_unaccent_dictionary_drift_refuses_then_same_database_retries(
+    plan: Plan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _clone(plan.admin_url, plan.source[INTAKE]) as db:
+        read = _seed(db, INTAKE)
+        original = read()
+        _cut(db, plan.admin_url, INTAKE, 2, monkeypatch)
+        # A trusted extension's member objects aren't owned by the role that
+        # installed it. Model operator DDL with the isolated test administrator.
+        dsn = database_url_for_name(plan.admin_url, db.settings_dict["NAME"])
+        with psycopg.connect(dsn, autocommit=True) as admin, admin.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT n.nspname, dict.dictname
+                FROM pg_catalog.pg_ts_dict dict
+                JOIN pg_catalog.pg_namespace n ON n.oid = dict.dictnamespace
+                JOIN pg_catalog.pg_depend d ON d.objid = dict.oid
+                    AND d.classid = 'pg_catalog.pg_ts_dict'::regclass
+                    AND d.refclassid = 'pg_catalog.pg_extension'::regclass
+                    AND d.deptype = 'e'
+                JOIN pg_catalog.pg_extension e ON e.oid = d.refobjid
+                WHERE e.extname = 'unaccent'
+                """
             )
-            before = _catalog(interrupted)
-            if reference is not None:
-                assert not any(
-                    kind == "policy" and name == object_name for kind, name, _ in before
+            [(namespace, name)] = cursor.fetchall()
+            cursor.execute("SELECT clinic_app.unaccent('Hôtel')")
+            assert cursor.fetchone() == ("Hotel",)
+            cursor.execute(
+                sql.SQL("ALTER TEXT SEARCH DICTIONARY {} RENAME TO {}").format(
+                    sql.Identifier(namespace, name),
+                    sql.Identifier("unexpected_dictionary"),
                 )
-            with interrupted.cursor() as cur:
-                cur.execute(drift)
-            interrupted.close()
-            planted = _catalog(interrupted)
-            assert planted != before
-            if reference is not None:
-                assert planted != reference
-
-            with pytest.raises(RuntimeError, match=re.escape(object_name)):
-                MigrationExecutor(interrupted).migrate([target])
-
-            interrupted.close()
-            assert target not in (
-                MigrationExecutor(interrupted).loader.applied_migrations
             )
-            assert _catalog(interrupted) == planted
-            assert read_bytes(interrupted) == protected
-
-
-def test_resume_refuses_wrong_storage_after_encrypted_write_witness(
-    django_db_blocker: DjangoDbBlocker, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    admin_url = os.environ["TEST_SUPERUSER_DATABASE_URL"]
-    with (
-        django_db_blocker.unblock(),
-        _scratch_database(admin_url) as template,
-        _default_connection(template),
-    ):
-        executor = MigrationExecutor(template)
-        parents = sorted(
-            node.key for node in executor.loader.graph.node_map[AI].parents
+            with pytest.raises(
+                psycopg.errors.UndefinedObject, match="text search dictionary"
+            ):
+                cursor.execute("SELECT clinic_app.unaccent('Hôtel')")
+        _assert_refused(
+            db, plan.admin_url, "entry logical schema differs.*restore or rebuild"
         )
-        state = executor.migrate(parents)
-        read_bytes = _seed(template, state, AI)
-        protected = read_bytes(template)
-        payload = "x" * 65_536
-
-        with _clone(admin_url, template) as clean:
-            _apply_with_cut(clean, AI, monkeypatch)
-            read_long = _seed(clean, state, AI, artifact_content=payload)
-            ciphertext = read_long(clean)[0]
-            assert isinstance(ciphertext, bytes | memoryview)
-            assert len(ciphertext) > len(payload)
-
-        with _clone(admin_url, template) as interrupted:
-            with pytest.raises(SimulatedInterruptionError, match="transaction commit"):
-                _apply_with_cut(interrupted, AI, monkeypatch, 1)
-            interrupted.close()
-            assert AI not in MigrationExecutor(interrupted).loader.applied_migrations
-            before = _catalog(interrupted)
-            with interrupted.cursor() as cursor:
-                cursor.execute(
-                    "ALTER TABLE clinic_app.ai_aiartifact ALTER COLUMN content "
-                    "SET STORAGE PLAIN"
+        with psycopg.connect(dsn, autocommit=True) as admin:
+            admin.execute(
+                sql.SQL("ALTER TEXT SEARCH DICTIONARY {} RENAME TO {}").format(
+                    sql.Identifier(namespace, "unexpected_dictionary"),
+                    sql.Identifier(name),
                 )
-            interrupted.close()
-            with pytest.raises(DatabaseError) as write_error:
-                _seed(interrupted, state, AI, artifact_content=payload)
-            cause = write_error.value.__cause__
-            assert isinstance(cause, psycopg.Error)
-            assert cause.sqlstate == "54000"
-            planted = _catalog(interrupted)
-            assert planted != before
-            with pytest.raises(RuntimeError, match=r"ai_aiartifact\.content\.storage"):
-                MigrationExecutor(interrupted).migrate([AI])
-            interrupted.close()
-            assert AI not in MigrationExecutor(interrupted).loader.applied_migrations
-            assert _catalog(interrupted) == planted
-            assert read_bytes(interrupted) == protected
+            )
+        _run(db)
+        assert _applied(db) == plan.head_ledger
+        assert migration_preflight.schema_digest(db) == plan.head_schema
+        assert read() == original
 
 
-def test_committed_fingerprints_match_fresh_migration_catalog(
-    django_db_blocker: DjangoDbBlocker,
+def test_operator_index_is_refused_then_retry_succeeds(plan: Plan) -> None:
+    with _clone(plan.admin_url, plan.source[INTAKE]) as db:
+        _seed(db, INTAKE)
+        with db.cursor() as cursor:
+            cursor.execute(
+                "CREATE INDEX f6_operator_index "
+                "ON clinic_app.intake_patient (organization_id)"
+            )
+        _assert_refused(
+            db, plan.admin_url, "operator-created indexes.*restore or rebuild"
+        )
+        with db.cursor() as cursor:
+            cursor.execute("DROP INDEX clinic_app.f6_operator_index")
+        _run(db)
+        assert migration_preflight.schema_digest(db) == plan.head_schema
+
+
+def test_approved_base_vacuum_full_does_not_refuse_forward_plan(plan: Plan) -> None:
+    # The SQL-layout fixture already enumerates the exact first-party baseline.
+    source = Path(__file__).with_name("migration_sql_at_4f8d2454.json")
+    added = json.loads(source.read_text(encoding="utf-8"))["added"]
+    with _scratch_database(plan.admin_url) as db, _default_connection(db):
+        executor = MigrationExecutor(db)
+        loader = executor.loader
+        nodes = {key for key in loader.graph.nodes if ".".join(key) not in added}
+        targets = sorted(
+            key
+            for key in nodes
+            if not any(
+                child.key in nodes for child in loader.graph.node_map[key].children
+            )
+        )
+        executor.migrate(targets)
+        before = migration_preflight.schema_digest(db)
+        legacy_relation = "clinic_app.ehr_clinicaldocumentversion"
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_relation_filenode(%s::regclass)", [legacy_relation]
+            )
+            old_filenode = cursor.fetchone()
+            cursor.execute("VACUUM FULL clinic_app.ehr_clinicaldocumentversion")
+            cursor.execute(
+                "SELECT pg_relation_filenode(%s::regclass)", [legacy_relation]
+            )
+            new_filenode = cursor.fetchone()
+        assert old_filenode != new_filenode
+        assert migration_preflight.schema_digest(db) == before
+        _run(db)
+        assert _applied(db) == plan.head_ledger
+        assert migration_preflight.schema_digest(db) == plan.head_schema
+
+
+@pytest.mark.parametrize("key", [INTAKE, AI])
+def test_guarded_migration_reverse_is_refused(
+    key: recovery.MigrationKey, plan: Plan
 ) -> None:
+    migration: Migration = MigrationLoader(None).disk_migrations[key]
+    assert isinstance(migration, recovery.GuardedMigration)
+    db = plan.source[key]
+    loader = MigrationLoader(db)
+    before: ProjectState = loader.project_state(list(loader.applied_migrations))
     with (
-        django_db_blocker.unblock(),
-        _scratch_database(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as db,
-        _default_connection(db),
+        db.schema_editor(atomic=False) as editor,
+        pytest.raises(IrreversibleError, match="rollback requires restore"),
     ):
-        normal = capture(db)
-    with (
-        django_db_blocker.unblock(),
-        _scratch_database(os.environ["TEST_SUPERUSER_DATABASE_URL"]) as db,
-        _default_connection(db),
-    ):
-        observed = merged(normal, capture(db, guarded_first=True))
-    # Use the generator's exact bytes, including the migration replay order.
-    if (json.dumps(observed, indent=1) + "\n").encode() != FIXTURE.read_bytes():
-        msg = "Fresh catalog reference differs in content or replay order"
-        raise AssertionError(msg)
+        migration.unapply(before, editor)

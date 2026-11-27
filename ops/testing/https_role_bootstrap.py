@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ops.db.bootstrap_progress import migration_progress_sql
 from ops.testing.isolation_docker_metadata import run_docker_command
 
 if TYPE_CHECKING:
@@ -55,5 +56,7 @@ def configure_roles(container_id: str, plan: HttpsStackPlan) -> None:
             "ON_ERROR_STOP=1",
             "-c",
             sql,
+            "-c",
+            migration_progress_sql(),
         )
     )

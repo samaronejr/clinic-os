@@ -8,15 +8,16 @@ from django.conf import settings
 from django.db import migrations, models
 
 import apps.tenancy.fields
-from apps.ai.migrations._state_batch import CheckpointedStateBatch
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations._draft_sql import SQL
-from apps.tenancy.migrations._resumable_schema import ResumableRunSQL
+from apps.tenancy.migrations._resumable_schema import (
+    AtomicSchemaMigration,
+    TransactionScript,
+)
 
 
-class Migration(migrations.Migration):
+class Migration(AtomicSchemaMigration):
     """Protected append-only drafts; irreversible, rollback requires restore."""
-
-    atomic = False
 
     dependencies: ClassVar = [
         ("ai", "0002_agent_execution"),
@@ -298,14 +299,9 @@ class Migration(migrations.Migration):
         ),
     ]
     operations: ClassVar = [
-        CheckpointedStateBatch(
-            receipt="scribe_reviewdecision_version_id_2ba56d5c",
+        SchemaStateBatch(
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
-        ResumableRunSQL(
-            SQL,
-            table="scribe_aidraft",
-            trigger="draft_no_truncate",
-        ),
+        TransactionScript(SQL),
     ]
