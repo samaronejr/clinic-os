@@ -1,0 +1,98 @@
+{
+  "added": 12,
+  "coverage": "93.59%",
+  "focus": {
+    "cases": 86,
+    "failures": 0,
+    "run_id": "bf6be45886dd41f6bad8427c71726344"
+  },
+  "handoff": {
+    "fresh": {
+      "elapsed_ns": 345164501,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 7
+    },
+    "fresh_control_distinct": true,
+    "idle_ns": 121501629512,
+    "injected_launcher_wait": {
+      "elapsed_ns": 15066717981,
+      "group_reaped": true,
+      "last_stage": "uv-launch",
+      "leftover_backends": 0,
+      "samples": 298
+    },
+    "run_id": "bf6be45886dd41f6bad8427c71726344",
+    "same_lease": true,
+    "warm": {
+      "elapsed_ns": 344413538,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 7
+    }
+  },
+  "isolation": 3308,
+  "mutations": {
+    "equivalent": [
+      "r.rolsuper"
+    ],
+    "killed": 47,
+    "requested_killed": [
+      "check_extension_members_only",
+      "collapse_overloads_by_name",
+      "discard_grant_options",
+      "filter_by_app_connect",
+      "ignore_effective_owner_delegation",
+      "ignore_public_application_overload",
+      "omit_bare_database_owner",
+      "omit_context_owner_edge",
+      "omit_external_namespace_owner",
+      "omit_implicit_routine_owner",
+      "omit_large_object_owner",
+      "omit_machine_owner_root",
+      "omit_native_memory_routine",
+      "omit_revoked_schema_owner",
+      "omit_schema_ownership",
+      "omit_sequence_ownership",
+      "omit_table_ownership_including_generated_row_types",
+      "omit_type_ownership",
+      "pg_read_all_settings",
+      "pg_read_all_stats",
+      "pg_stat_scan_tables",
+      "recognize_only_direct_routine_owner",
+      "require_extension_for_app_schema",
+      "signal_recycled_numeric_group_model"
+    ],
+    "run_id": "405ac777d1914ad1bdff1550d232d60a"
+  },
+  "native_pidfd": 11,
+  "origins": {
+    "grant_options": 0,
+    "migrations": 259,
+    "policy_sha256": "1bdb4c83f80d992b39d22d6f6d7aca543ab55515256e8c3e5922b703adaa9d6c",
+    "routines": 608,
+    "run_id": "db1a046a1a2e45fd86faef07e4c14a8f"
+  },
+  "parent_existing_schema_refusal": 1,
+  "parent_new_red": 8,
+  "previous_nodes": 16665,
+  "recorder": {
+    "cases": 2,
+    "failures": 2,
+    "run_id": "6201d17fd21b4017baf318286ab1c830"
+  },
+  "restore_guards": 6,
+  "sc5": {
+    "count": 16677,
+    "junit_sha256": "c8c858436b70cd142756c89a2cb31dbf2be29598f12316fb2ddd0fba113b54e6",
+    "manifest_sha256": "60742f26505eda9d85c3b0e535cf7c1b41c309e5a99386a0ea7f6e6a004b361e",
+    "reference_sha256": "02b675a289d2bc94bcda35fdc31d5f130c275281c4f125e97b202d9c5d4c2432",
+    "run_id": "ad6ec57c75dc4818878b1a4ad780a623",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c"
+  },
+  "sequences": 7,
+  "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+  "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2"
+}

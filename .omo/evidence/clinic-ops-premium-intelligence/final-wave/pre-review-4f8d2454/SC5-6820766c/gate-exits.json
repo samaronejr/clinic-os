@@ -1,0 +1,86 @@
+{
+  "isolation": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "6f72f316bc904d1baa7c1232530d08ba",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "summary": "3308 passed in 291.94s (0:04:51)",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-isolation-6820766c.service"
+  },
+  "mutations": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "405ac777d1914ad1bdff1550d232d60a",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "summary": "47 failed, 1 passed in 272.52s (0:04:32)",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-mutations-6820766c.service"
+  },
+  "origin": {
+    "exit": 0,
+    "run_id": "db1a046a1a2e45fd86faef07e4c14a8f",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-origin-6820766c.service"
+  },
+  "parent": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "9493e0b3767b40b2b8661a90f964b401",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "summary": "8 failed, 1 passed in 0.42s",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-parent-6820766c.service"
+  },
+  "positive": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "bf6be45886dd41f6bad8427c71726344",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "summary": "86 passed, 58 deselected in 821.67s (0:13:41)",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-positive-6820766c.service"
+  },
+  "recorder": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "6201d17fd21b4017baf318286ab1c830",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "summary": "2 failed in 339.63s (0:05:39)",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-recorder-6820766c.service"
+  },
+  "sc5": {
+    "coverage": "93.59%",
+    "exit": 0,
+    "guards": [
+      126,
+      126
+    ],
+    "pytest_exit": 0,
+    "run_id": "ad6ec57c75dc4818878b1a4ad780a623",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "summary": "16677 passed in 15232.86s (4:13:52)",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-sc5-6820766c.service"
+  },
+  "static": {
+    "exit": 0,
+    "files": 2958,
+    "guards": 126,
+    "markers": [
+      "All checks passed!",
+      "2958 files already formatted",
+      "Success: no issues found in 2958 source files",
+      "No changes detected",
+      "System check identified no issues",
+      "database posture: clinic_app runtime",
+      "verified=126 repaired=0 disabled=0"
+    ],
+    "run_id": "3795f58146fe47d0abb480ce783deeda",
+    "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+    "tree": "3ff4820011cd9ff91e78401f7e3bea6c7e2356a2",
+    "unit": "cpi-kek-r4f-static-6820766c.service"
+  }
+}

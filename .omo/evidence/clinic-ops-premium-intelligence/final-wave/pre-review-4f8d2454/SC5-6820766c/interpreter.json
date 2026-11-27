@@ -1,0 +1,1 @@
+{"descriptor_closed": true, "executable_relative_to_checkout": ".venv/bin/python", "implementation": "CPython", "kernel_fd_target": "anon_inode:[pidfd]", "native_executable": "/usr/bin/python3.12", "phase": "pytest_sessionstart", "pidfd_provider": "posix", "run_id": "ad6ec57c75dc4818878b1a4ad780a623", "sha": "6820766c6d02ae9baaca01e09facd0a14167ce0c", "version": "3.12.3"}
