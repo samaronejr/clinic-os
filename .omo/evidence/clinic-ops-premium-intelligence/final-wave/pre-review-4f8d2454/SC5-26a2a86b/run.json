@@ -1,0 +1,27 @@
+{
+  "added": 9,
+  "coverage": "93.59%",
+  "duplicates": 0,
+  "extra": 0,
+  "fsync_off_owned_cluster_start": "2026-11-27T01:39:18.182677389Z",
+  "full_exit": 0,
+  "full_invocations": 1,
+  "manager": {
+    "code": 1,
+    "exit_us": 1795768531108766,
+    "nice": 10,
+    "result": "success",
+    "run_id": "005b0a75465f475e9ef8382a4737317d",
+    "start_us": 1795754327873422,
+    "state": "inactive",
+    "status": 0,
+    "unit": "cpi-kek-r4g-sc5-26a2a86b.service"
+  },
+  "missing": 0,
+  "nonpass": 0,
+  "parent": "6820766c6d02ae9baaca01e09facd0a14167ce0c",
+  "previous_ids": 16677,
+  "run_id": "005b0a75465f475e9ef8382a4737317d",
+  "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+  "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0"
+}

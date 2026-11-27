@@ -1,0 +1,105 @@
+{
+  "added": 9,
+  "coverage": "93.59%",
+  "disposition_restored": true,
+  "focus": {
+    "cases": 95,
+    "failures": 0,
+    "run_id": "a282f445a4f04a8faca0728d0cdc7ea1"
+  },
+  "foreign_signals_in_successor": 0,
+  "handoff": {
+    "fresh": {
+      "elapsed_ns": 933080903,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 19
+    },
+    "fresh_control_distinct": true,
+    "idle_ns": 122018451322,
+    "injected_launcher_wait": {
+      "elapsed_ns": 15074859822,
+      "group_reaped": true,
+      "last_stage": "uv-launch",
+      "leftover_backends": 0,
+      "samples": 297
+    },
+    "run_id": "a282f445a4f04a8faca0728d0cdc7ea1",
+    "same_lease": true,
+    "warm": {
+      "elapsed_ns": 283837266,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 6
+    }
+  },
+  "isolation": 3308,
+  "mutations": {
+    "equivalent": [
+      "r.rolsuper"
+    ],
+    "killed": 52,
+    "requested_killed": [
+      "check_extension_members_only",
+      "collapse_overloads_by_name",
+      "discard_grant_options",
+      "discard_partial_spawn_receipt",
+      "filter_by_app_connect",
+      "hold_observation_gate_across_database_read",
+      "ignore_effective_owner_delegation",
+      "ignore_inherited_sigchld_reset",
+      "ignore_public_application_overload",
+      "leave_sampling_admission_open",
+      "numeric_signal_on_error_model",
+      "omit_bare_database_owner",
+      "omit_context_owner_edge",
+      "omit_external_namespace_owner",
+      "omit_implicit_routine_owner",
+      "omit_large_object_owner",
+      "omit_machine_owner_root",
+      "omit_native_memory_routine",
+      "omit_revoked_schema_owner",
+      "omit_schema_ownership",
+      "omit_sequence_ownership",
+      "omit_table_ownership_including_generated_row_types",
+      "omit_type_ownership",
+      "pg_read_all_settings",
+      "pg_read_all_stats",
+      "pg_stat_scan_tables",
+      "recognize_only_direct_routine_owner",
+      "require_extension_for_app_schema",
+      "signal_recycled_numeric_group_model"
+    ],
+    "run_id": "958c025fe168439a8570b4d51933d66c"
+  },
+  "native_pidfd": 11,
+  "new_regressions": 9,
+  "origins": {
+    "grant_options": 0,
+    "migrations": 259,
+    "policy_sha256": "1bdb4c83f80d992b39d22d6f6d7aca543ab55515256e8c3e5922b703adaa9d6c",
+    "routines": 608,
+    "run_id": "c42377c2b32348a2aa8eed04e683ce2c"
+  },
+  "parent_new_red": 3,
+  "previous_nodes": 16677,
+  "recorder": {
+    "cases": 2,
+    "failures": 2,
+    "run_id": "5d231e0f50e947f5abae57fffdf5c436"
+  },
+  "restore_guards": 6,
+  "sc5": {
+    "count": 16686,
+    "junit_sha256": "5ed23ec0e68a14acf7bf1552504995f428bd1919bf977562b66c910aab43dfec",
+    "manifest_sha256": "627ab202942e735c78ef27c52fd7abcce4dd74976e89a9dc174012edeacd4a4b",
+    "reference_sha256": "d684223784e6c6ef8cd51625a9ad6d102f28ba9fc2cf8982b7aff577fc0b2b40",
+    "run_id": "005b0a75465f475e9ef8382a4737317d",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14"
+  },
+  "sequences": 7,
+  "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+  "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0"
+}

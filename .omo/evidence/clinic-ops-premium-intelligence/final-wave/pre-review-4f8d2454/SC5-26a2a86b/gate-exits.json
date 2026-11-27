@@ -1,0 +1,86 @@
+{
+  "isolation": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "6e5e7662e60443949dd296b4c25208a0",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "summary": "3308 passed in 430.53s (0:07:10)",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-isolation-26a2a86b.service"
+  },
+  "mutations": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "958c025fe168439a8570b4d51933d66c",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "summary": "52 failed, 1 passed in 250.76s (0:04:10)",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-mutations-26a2a86b.service"
+  },
+  "origin": {
+    "exit": 0,
+    "run_id": "c42377c2b32348a2aa8eed04e683ce2c",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-origin-26a2a86b.service"
+  },
+  "parent": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "1caeeb156f014ea389d3d0c62934aa35",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "summary": "3 failed in 0.04s",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-parent-26a2a86b.service"
+  },
+  "positive": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "a282f445a4f04a8faca0728d0cdc7ea1",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "summary": "95 passed, 58 deselected in 808.60s (0:13:28)",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-positive-26a2a86b.service"
+  },
+  "recorder": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "5d231e0f50e947f5abae57fffdf5c436",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "summary": "2 failed in 334.79s (0:05:34)",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-recorder-26a2a86b.service"
+  },
+  "sc5": {
+    "coverage": "93.59%",
+    "exit": 0,
+    "guards": [
+      126,
+      126
+    ],
+    "pytest_exit": 0,
+    "run_id": "005b0a75465f475e9ef8382a4737317d",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "summary": "16686 passed in 14157.21s (3:55:57)",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-sc5-26a2a86b.service"
+  },
+  "static": {
+    "exit": 0,
+    "files": 2962,
+    "guards": 126,
+    "markers": [
+      "All checks passed!",
+      "2962 files already formatted",
+      "Success: no issues found in 2962 source files",
+      "No changes detected",
+      "System check identified no issues",
+      "database posture: clinic_app runtime",
+      "verified=126 repaired=0 disabled=0"
+    ],
+    "run_id": "cb807c8ccfda421e93d8d23ca903ebc3",
+    "sha": "26a2a86b4873b2bcfea74ac42a9e7700a0661d14",
+    "tree": "ff0f2b905fb88668c1bb1972a3dd5e4347c9e7d0",
+    "unit": "cpi-kek-r4g-static-26a2a86b.service"
+  }
+}
