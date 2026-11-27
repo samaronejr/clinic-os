@@ -586,7 +586,9 @@ projection at entry and at exit against a trusted clean rehearsal. The Django
 ledger and progress select the expected entry; the live schema never selects
 a prefix. The projection includes extension member identities omitted from a
 standard dump, such as the unaccent dictionary. It ignores physical layout,
-so a `VACUUM FULL` alone does not block a clean upgrade. It is not a row audit:
+so a `VACUUM FULL` alone does not block a clean upgrade. It also ignores the
+order of role names in a policy's `TO` list, but not the role names themselves
+or the policy predicates. It is not a row audit:
 values left by a historically wrong fast default, arbitrary prior data
 corruption, and extension internals not represented by the projection are
 not detected. A declaration such as a new clustering designation or an

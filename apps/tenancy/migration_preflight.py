@@ -74,6 +74,15 @@ _METADATA = re.compile(
     rb"(?m)^(?:\\(?:un)?restrict [A-Za-z0-9]+|-- Dumped (?:from|by) .*)\n"
 )
 _OBJECT = re.compile(rb"(?m)^--\n-- Name: [^\n]+\n--\n")
+_IDENT = rb'(?:"(?:[^"\n]|"")*"|[a-z_][a-z_0-9$]*)'
+_POLICY_ROLES = re.compile(
+    rb"\A--\n-- Name: [^\n]+; Type: POLICY; Schema: [^\n]+\n--\n\n"
+    rb"CREATE POLICY %s ON %s\.%s"
+    rb"(?: AS RESTRICTIVE)?(?: FOR (?:SELECT|INSERT|UPDATE|DELETE|ALL))? TO "
+    rb"(?P<roles>%s(?:, %s)*)(?= USING | WITH CHECK |;)"
+    % (_IDENT, _IDENT, _IDENT, _IDENT, _IDENT)
+)
+_ROLE = re.compile(_IDENT)
 _CONNECTION = {
     "host": "PGHOST",
     "hostaddr": "PGHOSTADDR",
@@ -88,6 +97,17 @@ _CONNECTION = {
 }
 
 
+def _policy_roles(block: bytes) -> bytes:
+    # pg_dump gathers the role names without ORDER BY. Reordering a policy's
+    # TO set is not DDL drift; any change to its members or predicates is.
+    match = _POLICY_ROLES.match(block)
+    if match is None:
+        return block
+    start, end = match.span("roles")
+    roles = b", ".join(sorted(_ROLE.findall(match["roles"])))
+    return block[:start] + roles + block[end:]
+
+
 def _normalize(dump: bytes) -> bytes:
     # Sort complete pg_dump object blocks, not individual DDL lines. Bodies,
     # column order, owner changes, ACL statements, etc. remain in the digest.
@@ -100,7 +120,7 @@ def _normalize(dump: bytes) -> bytes:
     if not starts:
         return dump[:end].rstrip()
     bodies = [
-        dump[start:stop].rstrip()
+        _policy_roles(dump[start:stop].rstrip())
         for start, stop in zip(starts, [*starts[1:], end], strict=True)
     ]
     return b"\n".join([dump[: starts[0]].rstrip(), *sorted(bodies)])
