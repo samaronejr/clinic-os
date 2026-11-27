@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 from sqlparse import tokens
 
-from .clock_runsql import SQLDecoder
+from scheduling.clock_runsql import SQLDecoder
+
 from .clock_source import DYNAMIC, parsed_source, source_fragments
 from .clock_source_files import source_files
 from .clock_temporal_inputs import LiteralInputs

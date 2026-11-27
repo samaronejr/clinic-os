@@ -31,12 +31,19 @@ def run_sql_operations(operations: Iterable[Operation]) -> Iterator[migrations.R
 
 
 @lru_cache(maxsize=1)
+def shipped_migration_loader() -> MigrationLoader:
+    """Capture the unpruned migration graph before test app restrictions."""
+    loader = MigrationLoader(None, replace_migrations=False)
+    assert loader.graph.nodes, "the SQL census requires the full app registry"
+    return loader
+
+
+@lru_cache(maxsize=1)
 def _graph_constructors() -> frozenset[str]:
     # The graph supplies constructor identities, never SQL values for decoding.
-    graph = MigrationLoader(None, replace_migrations=False).graph
     return frozenset(
         f"{constructor.__module__}.{constructor.__name__}"
-        for migration in graph.nodes.values()
+        for migration in shipped_migration_loader().graph.nodes.values()
         for operation in run_sql_operations(migration.operations)
         if (constructor := type(operation)) is not migrations.RunSQL
     )

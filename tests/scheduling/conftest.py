@@ -24,6 +24,7 @@ from django.db import connection, models
 from django.utils import timezone
 from ops.testing.ci_pytest_plugin import load_manifest
 
+from scheduling.clock_runsql import shipped_migration_loader
 from scheduling.clock_support import frozen_sql_clocks
 
 from .clock_catalog import live_clock_inventory
@@ -71,6 +72,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 "state and require a server-state serial classification"
             )
             raise pytest.UsageError(message)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _capture_full_clock_migration_graph() -> None:
+    # Catalog tests set available_apps=[] at function scope. The SQL census
+    # must still derive its inventory from the entire shipped graph.
+    shipped_migration_loader()
 
 
 @pytest.fixture(scope="session")

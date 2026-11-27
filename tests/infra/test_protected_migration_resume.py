@@ -440,7 +440,7 @@ def test_operator_index_is_refused_then_retry_succeeds(plan: Plan) -> None:
                 sql.SQL(
                     "CREATE INDEX f6_operator_index "
                     "ON clinic_app.intake_patient (organization_id) "
-                    "WHERE full_name <> {}"
+                    "WHERE organization_id::text <> {}"
                 ).format(sql.Literal(canary))
             )
         diagnostic = _assert_refused(

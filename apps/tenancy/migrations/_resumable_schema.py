@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from copy import copy
 from typing import TYPE_CHECKING, Final, Never
 
 from django.db import DatabaseError, migrations, router, transaction
@@ -61,11 +62,11 @@ def prefix(key: MigrationKey, steps: tuple[int, ...], length: int) -> int:
     return len(steps)
 
 
-def flush_deferred(editor: BaseDatabaseSchemaEditor) -> None:
+def flush_deferred(schema_editor: BaseDatabaseSchemaEditor) -> None:
     """Run generated FKs and indexes before the transaction records success."""
-    for statement in editor.deferred_sql:
-        editor.execute(statement, None)
-    editor.deferred_sql.clear()
+    for statement in schema_editor.deferred_sql:
+        schema_editor.execute(statement, None)
+    schema_editor.deferred_sql.clear()
 
 
 def record_step(db: BaseDatabaseWrapper, key: MigrationKey, step: int) -> None:
@@ -167,10 +168,6 @@ class TransactionScript(migrations.RunSQL):
         if schema_editor.collect_sql:
             super().database_forwards(app_label, schema_editor, from_state, to_state)
             return
-        if not router.allow_migrate(
-            schema_editor.connection.alias, app_label, **self.hints
-        ):
-            return
         script = self.sql
         if not (
             isinstance(script, str)
@@ -178,5 +175,15 @@ class TransactionScript(migrations.RunSQL):
             and script.endswith("COMMIT;")
             and schema_editor.connection.in_atomic_block
         ):
-            refuse("historical SQL needs its declared outer transaction")
-        schema_editor.execute(script[len("BEGIN;") : -len("COMMIT;")], params=None)
+            if router.allow_migrate(
+                schema_editor.connection.alias, app_label, **self.hints
+            ):
+                refuse("historical SQL needs its declared outer transaction")
+            return
+        # Keep the serialized SQL intact. Django forwards an explicit
+        # (statement, params) pair in one call without splitting the script.
+        step = copy(self)
+        step.sql = [(script[len("BEGIN;") : -len("COMMIT;")], None)]
+        migrations.RunSQL.database_forwards(
+            step, app_label, schema_editor, from_state, to_state
+        )

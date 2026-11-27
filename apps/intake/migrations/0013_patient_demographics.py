@@ -777,21 +777,16 @@ class Migration(GuardedMigration):
             database_operations=_schema_operations,
             state_operations=_schema_operations,
         ),
+        _step(EXTENSION_SQL),
+        _step(INTEGRITY_SQL),
         *[
-            _step(script)
-            for script in (
-                EXTENSION_SQL,
-                INTEGRITY_SQL,
-                *(
-                    apply_intake_rls(table, "organization_id")
-                    for table in NEW_RLS_TABLES
-                ),
-                APPEND_ONLY_SQL,
-                VERSION_GUARD_SQL,
-                RECEIPT_GUARD_SQL,
-                REGISTRY_SQL,
-                OVERVIEW_SQL,
-                RUNTIME_ACL_SQL,
-            )
+            _step(apply_intake_rls(table, "organization_id"))
+            for table in NEW_RLS_TABLES
         ],
+        _step(APPEND_ONLY_SQL),
+        _step(VERSION_GUARD_SQL),
+        _step(RECEIPT_GUARD_SQL),
+        _step(REGISTRY_SQL),
+        _step(OVERVIEW_SQL),
+        _step(RUNTIME_ACL_SQL),
     ]

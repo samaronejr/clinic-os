@@ -12,13 +12,17 @@ from typing import TYPE_CHECKING
 import pytest
 from apps.tenancy.migrations._resumable_schema import TransactionScript
 from django.db import connection
-from django.db.migrations.loader import MigrationLoader
 from psycopg import sql
 
+from scheduling import clock_runsql
+from scheduling.clock_runsql import (
+    SQLDecoder,
+    run_sql_operations,
+    shipped_migration_loader,
+)
+
 from . import clock_catalog_cache as cache
-from . import clock_runsql
 from .clock_catalog import live_clock_inventory
-from .clock_runsql import SQLDecoder, run_sql_operations
 from .clock_source import parsed_source
 from .clock_support import frozen_sql_clocks
 
@@ -105,7 +109,7 @@ def _assert_migration_sql(migration: Migration, path: Path, observed: list[str])
 def test_finite_decoder_matches_every_shipped_migration_runsql_value() -> None:
     decoder = SQLDecoder(ROOT)
     checked = 0
-    for migration in MigrationLoader(None).disk_migrations.values():
+    for migration in shipped_migration_loader().disk_migrations.values():
         path = Path(inspect.getfile(type(migration)))
         if not path.is_relative_to(ROOT / "apps"):
             continue
@@ -120,7 +124,7 @@ def test_transaction_script_cannot_disappear_from_finite_census(
     decoder = SQLDecoder(ROOT)
     qualified_name = f"{TransactionScript.__module__}.{TransactionScript.__name__}"
     without_script = clock_runsql._graph_constructors() - {qualified_name}
-    graph = MigrationLoader(None, replace_migrations=False).graph
+    graph = shipped_migration_loader().graph
     checked = 0
     for migration in graph.nodes.values():
         if not any(
