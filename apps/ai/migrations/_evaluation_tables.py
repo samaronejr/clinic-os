@@ -37,15 +37,16 @@ def _human(*, nullable: bool = False) -> models.ForeignKey[object, object]:
     )
 
 
-OPERATIONS = [
-    *(
-        migrations.AddField(
-            model_name="modelconfiguration",
-            name=name,
-            field=models.CharField(default="", max_length=64),
-        )
-        for name in ("prompt_sha256", "retrieval_sha256", "schema_sha256")
-    ),
+CONFIGURATION_FIELDS = [
+    migrations.AddField(
+        model_name="modelconfiguration",
+        name=name,
+        field=models.CharField(default="", max_length=64),
+    )
+    for name in ("prompt_sha256", "retrieval_sha256", "schema_sha256")
+]
+
+TABLE_OPERATIONS = [
     migrations.CreateModel(
         name="EvaluationProtocol",
         fields=[

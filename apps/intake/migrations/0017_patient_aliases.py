@@ -17,7 +17,7 @@ from apps.intake.migrations._patient_alias_operations import (
     TRANSFER_OPERATION,
 )
 from apps.tenancy.migration_operations import SeparateDatabaseAndState
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 if TYPE_CHECKING:
     from django.apps.registry import Apps
@@ -32,7 +32,7 @@ def install_alias_contract(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) 
         cursor.execute(ALIAS_SQL)
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """Preserve protected identity history; rollback requires restore."""
 
     dependencies: ClassVar = [

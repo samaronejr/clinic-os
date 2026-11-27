@@ -7,7 +7,7 @@ from django.db import migrations
 from apps.ai.migrations import _extraction_review_sql, _extraction_sql
 from apps.ai.migrations._extraction_tables import OPERATIONS
 from apps.ai.migrations._state_batch import SchemaStateBatch
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
 class ProtectedSchema(SchemaStateBatch):
@@ -17,7 +17,7 @@ class ProtectedSchema(SchemaStateBatch):
     reversible = False
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """Never weaken existing source immutability or identity matching."""
 
     dependencies: ClassVar = [

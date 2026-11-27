@@ -5,9 +5,9 @@ from typing import ClassVar
 from django.db import migrations
 
 from apps.ai.migrations import _evaluation_sql
-from apps.ai.migrations._evaluation_tables import OPERATIONS
+from apps.ai.migrations._evaluation_tables import CONFIGURATION_FIELDS, TABLE_OPERATIONS
 from apps.ai.migrations._state_batch import SchemaStateBatch
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
 class ProtectedSchema(SchemaStateBatch):
@@ -17,7 +17,7 @@ class ProtectedSchema(SchemaStateBatch):
     reversible = False
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """No external approval or real-provider route is installed."""
 
     dependencies: ClassVar = [
@@ -28,11 +28,12 @@ class Migration(AtomicSchemaMigration):
         ("scheduling", "0009_reception_operations"),
     ]
     operations: ClassVar = [
+        *CONFIGURATION_FIELDS,
         ProtectedSchema(
             database_operations=[
-                *OPERATIONS,
+                *TABLE_OPERATIONS,
                 migrations.RunSQL(_evaluation_sql.SQL),
             ],
-            state_operations=OPERATIONS,
+            state_operations=TABLE_OPERATIONS,
         ),
     ]

@@ -6,10 +6,10 @@ from django.db import migrations
 
 from apps.inventory.migrations._inventory_sql import SQL
 from apps.inventory.migrations._schema import MODELS, ProtectedSchema
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """Irreversible protected schema; rollback requires a restore."""
 
     dependencies: ClassVar = [

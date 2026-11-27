@@ -9,7 +9,7 @@ from django.db.migrations.operations.base import Operation
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.orders.migrations._contract_sql import CONTRACT
 from apps.orders.migrations._schema import MODELS
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
 class ProtectedSchema(SchemaStateBatch):
@@ -19,7 +19,7 @@ class ProtectedSchema(SchemaStateBatch):
     reversible = False
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """No plaintext conversion, and no reverse path that can erase evidence."""
 
     dependencies: ClassVar = [

@@ -566,19 +566,24 @@ The following lane migrations record each guarded commit in the **same
 transaction** as the work and its deferred SQL. A retry reads that receipt
 prefix (including the last commit before Django inserts its migration row):
 
-- `ai.0001_initial`, `ai.0002_agent_execution`, `ai.0003_artifact_retention`
-- `ehr.0014_longitudinal_record`, `identity.0019_identity_lifecycle`
+- `ai.0001_initial`, `ai.0002_agent_execution`, `ai.0003_artifact_retention`,
+  `ai.0004_document_extraction`, `ai.0005_evaluation`
+- `comms.0008_omnichannel_inbox`, `ehr.0014_longitudinal_record`,
+  `ehr.0015_specialty_packs`, `identity.0019_identity_lifecycle`
 - `insurance.0001_revenue_cycle`, `intake.0013_patient_demographics`,
-  `intake.0029_membership_payer`, `interop.0001_import_framework`
+  `intake.0017_patient_aliases`, `intake.0029_membership_payer`,
+  `interop.0001_import_framework`, `inventory.0001_inventory`,
+  `orders.0001_identity_safe_results`
 - `prescription.0012_clinical_document_kinds`,
   `prescription.0013_class_catalog_directions`,
   `scheduling.0011_insurer_membership`
-- `scribe.0001_initial`, `scribe.0003_transcripts`, `workflows.0006_care_plans`
+- `scribe.0001_initial`, `scribe.0003_transcripts`, `scribe.0005_note_drafts`,
+  `workflows.0006_care_plans`
 
-Additive migrations moved to one transaction publish their schema and Django
-record together. Protected-field migrations are irreversible; rollback is
-restore. Older non-atomic migrations outside this list are not covered by the
-F6 recovery protocol. The journal is deployment metadata, not application
+Migrations that only create new tables may publish their schema and Django
+record together in one transaction. Protected-field migrations are
+irreversible; rollback is restore. Older non-atomic migrations outside this
+list are not covered by the F6 recovery protocol. The journal is deployment metadata, not application
 content; a logical data restore does not copy it from the source.
 
 The command compares one normalized whole-database `pg_dump --schema-only`
@@ -592,9 +597,11 @@ or the policy predicates. It is not a row audit:
 values left by a historically wrong fast default, arbitrary prior data
 corruption, and extension internals not represented by the projection are
 not detected. A declaration such as a new clustering designation or an
-operator-created index is logical DDL and is not silently accepted. If index
-definitions differ at a failed edge, the refusal shows the schema-qualified
-index names, not their definitions or row values.
+operator-created index is logical DDL and is not silently accepted. Each edge
+also compares the live user-index census to the same rehearsed projection,
+before relying on `pg_dump`, which can omit an invalid or not-ready index
+left by a failed concurrent build. A mismatch names the schema-qualified
+indexes without revealing definitions or row values.
 
 Missing/corrupt progress, an unsupported ledger state, or a logical mismatch
 at entry stops before migration writes. Keep writes gated. If the error names

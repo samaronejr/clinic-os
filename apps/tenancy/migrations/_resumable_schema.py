@@ -138,7 +138,7 @@ class GuardedMigration(migrations.Migration):
 
 
 class AtomicSchemaMigration(migrations.Migration):
-    """Publish an additive schema and Django's recorder in one transaction."""
+    """Publish new tables and Django's recorder in one transaction."""
 
     atomic = True
 

@@ -10,7 +10,7 @@ from django.db import migrations, models
 import apps.tenancy.fields
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.comms.migrations import _inbox_sql
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 
 
 class ProtectedSchema(SchemaStateBatch):
@@ -25,7 +25,7 @@ class ProtectedSchema(SchemaStateBatch):
     reversible = False
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """No plaintext pass or reverse path; rollback = restore.
 
     Reversing would drop every encrypted conversation, message and note.

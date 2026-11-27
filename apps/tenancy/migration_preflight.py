@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from shutil import which
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Never, cast
 
 from django.db import transaction
 from django.db.migrations.recorder import MigrationRecorder
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
 
     from django.db.backends.base.base import BaseDatabaseWrapper
+    from django.db.backends.utils import CursorWrapper
     from django.db.migrations.executor import MigrationExecutor
     from psycopg import Connection
 
@@ -37,7 +38,7 @@ type IndexFingerprint = tuple[str, str]
 
 @dataclass(frozen=True)
 class SchemaProjection:
-    """An authoritative logical digest with non-authoritative index clues."""
+    """The logical dump digest and its complete user-index census."""
 
     digest: str
     indexes: frozenset[IndexFingerprint]
@@ -53,7 +54,7 @@ class PlanReference:
     indexes: tuple[IndexFingerprint, ...]
 
     def at(self, boundary_key: str) -> SchemaProjection | None:
-        """Resolve a ledger boundary and decode its diagnostic index set."""
+        """Resolve a ledger boundary and decode its expected index set."""
         entry = self.boundaries.get(boundary_key)
         if entry is None:
             return None
@@ -126,16 +127,61 @@ def _normalize(dump: bytes) -> bytes:
     return b"\n".join([dump[: starts[0]].rstrip(), *sorted(bodies)])
 
 
-def schema_projection(db: BaseDatabaseWrapper) -> SchemaProjection:
-    """Hash one schema dump; read index identities for mismatch diagnostics."""
+def _schema_mismatch(edge: str, indexes: set[str]) -> Never:
+    hint = ""
+    if indexes:
+        names = ", ".join(
+            name.encode("unicode_escape").decode("ascii")
+            for name in sorted(indexes)[:MAX_REPORTED_INDEXES]
+        )
+        remaining = len(indexes) - MAX_REPORTED_INDEXES
+        extra = f" and {remaining} more" if remaining > 0 else ""
+        hint = f"; index drift: {names}{extra}"
+    refuse(
+        f"{edge} logical schema differs from the approved pg_dump projection "
+        f"(unexpected DDL is unsupported){hint}"
+    )
+
+
+def _index_census(
+    cursor: CursorWrapper,
+) -> tuple[frozenset[IndexFingerprint], set[str]]:
+    # Unlike pg_dump, the live catalog has invalid and not-ready indexes.
+    # Keep stable logical definitions, not OIDs or transient physical layout.
+    cursor.execute(
+        """
+        SELECT pg_catalog.quote_ident(n.nspname::text) || '.' ||
+               pg_catalog.quote_ident(c.relname::text),
+               pg_catalog.pg_get_indexdef(i.indexrelid),
+               i.indisvalid AND i.indisready AND i.indislive
+        FROM pg_catalog.pg_index i
+        JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+        """
+    )
+    rows = cursor.fetchall()
+    return (
+        frozenset(
+            (name, sha256(definition.encode()).hexdigest())
+            for name, definition, _ in rows
+        ),
+        {name for name, _, usable in rows if not usable},
+    )
+
+
+def schema_projection(
+    db: BaseDatabaseWrapper,
+    *,
+    expected: SchemaProjection | None = None,
+    edge: str = "",
+) -> SchemaProjection:
+    """Read the index census and hash one dump from the same snapshot."""
     db.ensure_connection()
     conn = cast("Connection[tuple[object, ...]]", db.connection)
     info = conn.info
     if info.server_version // 10000 != POSTGRES_MAJOR:
         refuse("the approved schema projection requires PostgreSQL 16")
-    executable = which("pg_dump")
-    if executable is None:
-        refuse("the approved plan requires a PostgreSQL 16 pg_dump client")
     parameters = info.get_parameters()
     environment = {
         "PATH": os.environ.get("PATH", os.defpath),
@@ -160,9 +206,17 @@ def schema_projection(db: BaseDatabaseWrapper) -> SchemaProjection:
         if row is None:
             refuse("cannot open a schema snapshot")
         snapshot = row[0]
+        cursor.execute("SET LOCAL search_path = pg_catalog")
+        indexes, unusable = _index_census(cursor)
+        if expected is not None:
+            drift = unusable | {name for name, _ in indexes ^ expected.indexes}
+            if drift:
+                _schema_mismatch(edge, drift)
+        executable = which("pg_dump")
+        if executable is None:
+            refuse("the approved plan requires a PostgreSQL 16 pg_dump client")
         # pg_dump emits CREATE EXTENSION, not member DDL. Record generic
         # extension membership by logical object identity, not catalog OIDs.
-        cursor.execute("SET LOCAL search_path = pg_catalog")
         cursor.execute(
             """
             SELECT e.extname, e.extversion, i.type, i.identity
@@ -176,21 +230,6 @@ def schema_projection(db: BaseDatabaseWrapper) -> SchemaProjection:
             """
         )
         members = sorted(cursor.fetchall())
-        # Use PostgreSQL's own index deparser. These fingerprints only name
-        # differences after a failed whole-schema comparison; none is used to
-        # select or accept a plan boundary. Never include index SQL in an error.
-        cursor.execute(
-            """
-            SELECT pg_catalog.quote_ident(schemaname) || '.' ||
-                   pg_catalog.quote_ident(indexname), indexdef
-            FROM pg_catalog.pg_indexes
-            WHERE schemaname !~ '^pg_' AND schemaname <> 'information_schema'
-            """
-        )
-        indexes = frozenset(
-            (name, sha256(definition.encode()).hexdigest())
-            for name, definition in cursor.fetchall()
-        )
         try:
             dump = subprocess.run(  # noqa: S603 - fixed executable and flags
                 [
@@ -235,22 +274,9 @@ def boundary(
 
 
 def _check(db: BaseDatabaseWrapper, expected: SchemaProjection, *, edge: str) -> None:
-    observed = schema_projection(db)
+    observed = schema_projection(db, expected=expected, edge=edge)
     if observed.digest != expected.digest:
-        drift = sorted({name for name, _ in observed.indexes ^ expected.indexes})
-        hint = ""
-        if drift:
-            names = ", ".join(
-                name.encode("unicode_escape").decode("ascii")
-                for name in drift[:MAX_REPORTED_INDEXES]
-            )
-            remaining = len(drift) - MAX_REPORTED_INDEXES
-            extra = f" and {remaining} more" if remaining > 0 else ""
-            hint = f"; index drift: {names}{extra}"
-        refuse(
-            f"{edge} logical schema differs from the approved pg_dump projection "
-            f"(unexpected DDL is unsupported){hint}"
-        )
+        _schema_mismatch(edge, set())
 
 
 def _reference() -> PlanReference:

@@ -1,6 +1,6 @@
 """Disk-only extraction migration and model-state checks."""
 
-from apps.tenancy.migrations._resumable_schema import AtomicSchemaMigration
+from apps.tenancy.migrations._resumable_schema import GuardedMigration
 from django.apps import apps
 from django.db.migrations.autodetector import MigrationAutodetector
 from django.db.migrations.loader import MigrationLoader
@@ -18,6 +18,6 @@ def test_extraction_schema_is_complete_without_database_io() -> None:
     assert not changes.get("ai")
     assert not changes.get("orders")
     migration = loader.disk_migrations[("ai", "0004_document_extraction")]
-    assert isinstance(migration, AtomicSchemaMigration)
-    assert migration.atomic
+    assert isinstance(migration, GuardedMigration)
+    assert not migration.atomic
     assert not migration.operations[0].reversible

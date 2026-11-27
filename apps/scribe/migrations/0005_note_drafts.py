@@ -11,12 +11,12 @@ import apps.tenancy.fields
 from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations._draft_sql import SQL
 from apps.tenancy.migrations._resumable_schema import (
-    AtomicSchemaMigration,
+    GuardedMigration,
     TransactionScript,
 )
 
 
-class Migration(AtomicSchemaMigration):
+class Migration(GuardedMigration):
     """Protected append-only drafts; irreversible, rollback requires restore."""
 
     dependencies: ClassVar = [
@@ -300,8 +300,7 @@ class Migration(AtomicSchemaMigration):
     ]
     operations: ClassVar = [
         SchemaStateBatch(
-            database_operations=_schema_operations,
+            database_operations=[*_schema_operations, TransactionScript(SQL)],
             state_operations=_schema_operations,
         ),
-        TransactionScript(SQL),
     ]

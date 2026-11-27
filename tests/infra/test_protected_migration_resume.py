@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -20,7 +21,7 @@ from apps.tenancy import migration_preflight
 from apps.tenancy.migrations import _resumable_schema as recovery
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import connections, transaction
+from django.db import IntegrityError, connections, transaction
 from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
 
 INTAKE = ("intake", "0013_patient_demographics")
 AI = ("ai", "0003_artifact_retention")
+EVALUATION = ("ai", "0005_evaluation")
 
 
 class InterruptionError(Exception):
@@ -203,7 +205,7 @@ def _seed(
             id=org, name="Synthetic Migration Race", cnpj=f"{org.int % 10**14:014d}"
         )
         _scratch_tenant_key(db, org)
-        if key == AI:
+        if key in (AI, EVALUATION):
             clinic = (
                 registry.get_model("identity", "Clinic")
                 .objects.using(db.alias)
@@ -285,7 +287,7 @@ def test_resume_after_each_committed_boundary(
     key: recovery.MigrationKey, step: int, plan: Plan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with _clone(plan.admin_url, plan.source[key]) as db:
-        read = _seed(db, key) if key in (INTAKE, AI) else tuple
+        read = _seed(db, key) if key in (INTAKE, AI, EVALUATION) else tuple
         original = read()
         _cut(db, plan.admin_url, key, step, monkeypatch)
         assert key not in _applied(db)
@@ -431,29 +433,91 @@ def test_unaccent_dictionary_drift_refuses_then_same_database_retries(
         assert read() == original
 
 
-def test_operator_index_is_refused_then_retry_succeeds(plan: Plan) -> None:
+def _operator_index_state(db: DatabaseWrapper) -> tuple[bool, bool, bool, bool]:
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT indisvalid, indisready, indexprs IS NOT NULL, indpred IS NOT NULL
+            FROM pg_catalog.pg_index
+            WHERE indexrelid = 'clinic_app.f6_operator_index'::regclass
+            """
+        )
+        [(valid, ready, expression, partial)] = cursor.fetchall()
+        return valid, ready, expression, partial
+
+
+@pytest.mark.parametrize(
+    ("ddl", "flags"),
+    [
+        pytest.param(
+            "CREATE INDEX f6_operator_index ON clinic_app.django_migrations (app)",
+            (True, True, False, False),
+            id="valid",
+        ),
+        pytest.param(
+            "CREATE UNIQUE INDEX CONCURRENTLY f6_operator_index "
+            "ON clinic_app.django_migrations (app)",
+            (False, False, False, False),
+            id="failed-concurrent",
+        ),
+        pytest.param(
+            "CREATE INDEX f6_operator_index ON clinic_app.django_migrations "
+            "((lower(app))) WHERE app <> 'synthetic-index-definition-canary'",
+            (True, True, True, True),
+            id="partial-expression",
+        ),
+    ],
+)
+def test_operator_index_is_refused_then_retry_succeeds(
+    ddl: str,
+    flags: tuple[bool, bool, bool, bool],
+    plan: Plan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with _clone(plan.admin_url, plan.source[INTAKE]) as db:
-        _seed(db, INTAKE)
-        canary = "synthetic-index-definition-canary"
+        read = _seed(db, INTAKE)
+        original = read()
         with db.cursor() as cursor:
-            cursor.execute(
-                sql.SQL(
-                    "CREATE INDEX f6_operator_index "
-                    "ON clinic_app.intake_patient (organization_id) "
-                    "WHERE organization_id::text <> {}"
-                ).format(sql.Literal(canary))
-            )
+            if flags[0]:
+                cursor.execute(ddl)
+            else:
+                with pytest.raises(IntegrityError) as build_failure:
+                    cursor.execute(ddl)
+                assert isinstance(
+                    build_failure.value.__cause__, psycopg.errors.UniqueViolation
+                )
+        assert _operator_index_state(db) == flags
+        message = (
+            r"entry logical schema differs.*index drift: clinic_app\.f6_operator_index"
+            r"; restore or rebuild"
+        )
         diagnostic = _assert_refused(
             db,
             plan.admin_url,
-            r"entry logical schema differs.*index drift: clinic_app\.f6_operator_index"
-            r"; restore or rebuild",
+            message,
         )
-        assert canary not in diagnostic
+        assert "synthetic-index-definition-canary" not in diagnostic
+        if flags[0]:
+            # Visible indexes already failed the old dump comparison. Prove
+            # their catalog refusal is now independent of a usable dump.
+            rows = _row_image(db, plan.admin_url)
+
+            def dump_unavailable(argv: list[str], **_: object) -> None:
+                assert "--schema-only" in argv
+                raise subprocess.TimeoutExpired(argv[0], 30)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(subprocess, "run", dump_unavailable)
+                with pytest.raises(CommandError, match=message):
+                    _run(db)
+            assert _row_image(db, plan.admin_url) == rows
+        assert _operator_index_state(db) == flags
         with db.cursor() as cursor:
             cursor.execute("DROP INDEX clinic_app.f6_operator_index")
         _run(db)
+        assert _applied(db) == plan.head_ledger
         assert migration_preflight.schema_digest(db) == plan.head_schema
+        assert read() == original
 
 
 def test_approved_base_vacuum_full_does_not_refuse_forward_plan(plan: Plan) -> None:
@@ -528,7 +592,7 @@ def test_atomic_schema_and_django_record_share_a_commit(
         assert recovery.progress(db) == initial_progress
 
 
-@pytest.mark.parametrize("key", [INTAKE, AI])
+@pytest.mark.parametrize("key", [INTAKE, AI, EVALUATION])
 def test_guarded_migration_reverse_is_refused(
     key: recovery.MigrationKey, plan: Plan
 ) -> None:
