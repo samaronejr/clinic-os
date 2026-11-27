@@ -1,0 +1,21 @@
+{
+  "attribution": {
+    "guard": "Three test modules imported ctypes solely as a type annotation. The unchanged refusal guard rejected those imports. The corrected tests use the actual domain slot, which encapsulates the native cell in ops.testing.pidfd_spawn.",
+    "listener": "A fabricated Popen PID has no kernel process for the supervisor to pin. The corrected fixture substitutes only the workload: the real supervisor pins and reaps a private, pipe-blocked child inheriting the listener."
+  },
+  "chain_exit": 1,
+  "collected": 16702,
+  "errors": 0,
+  "failed": 2,
+  "failed_ids": [
+    "tests/browser/test_browser_server_controller.py::test_controller_keeps_port_bound_through_gunicorn_handoff",
+    "tests/core/test_workspace_guard_static.py::test_no_test_reaches_or_rewrites_the_refusal_guard"
+  ],
+  "passed": 16700,
+  "run_id": "2839b83898a8428cbeedf40e779a0614",
+  "sha": "9f44663bc3b2f4dd18241aae086b947663053117",
+  "skipped": 0,
+  "supplied_release_rows": 0,
+  "tree": "408906b97a296b1d4168a09c5fd3dfa4bfbeed2a",
+  "unit_exit": 1
+}

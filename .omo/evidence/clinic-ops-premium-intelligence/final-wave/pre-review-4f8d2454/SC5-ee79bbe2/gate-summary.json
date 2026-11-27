@@ -1,0 +1,147 @@
+{
+  "added": 16,
+  "corrected_failures_passing": 2,
+  "coverage": "93.59%",
+  "focus": {
+    "cases": 111,
+    "failures": 0,
+    "run_id": "bbb021cafdc34d68b99d8a7af5533b87"
+  },
+  "foreign_signals": 0,
+  "handoff": {
+    "fresh": {
+      "elapsed_ns": 383057972,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 8
+    },
+    "fresh_control_distinct": true,
+    "idle_ns": 106842438947,
+    "injected_launcher_wait": {
+      "elapsed_ns": 15075642247,
+      "group_reaped": true,
+      "last_stage": "uv-launch",
+      "leftover_backends": 0,
+      "samples": 296
+    },
+    "run_id": "bbb021cafdc34d68b99d8a7af5533b87",
+    "same_lease": true,
+    "warm": {
+      "elapsed_ns": 385861256,
+      "group_reaped": true,
+      "last_stage": "peer-finished",
+      "leftover_backends": 0,
+      "samples": 8
+    }
+  },
+  "isolation": 3308,
+  "legacy_socket_omission": {
+    "admission_refused": true,
+    "partial_birth_reaped": true
+  },
+  "mutations": {
+    "equivalent": [
+      "r.rolsuper"
+    ],
+    "killed": 58,
+    "requested_killed": [
+      "check_extension_members_only",
+      "collapse_overloads_by_name",
+      "discard_grant_options",
+      "discard_parent_birth_on_eof",
+      "discard_parent_birth_on_live_silent_gate",
+      "discard_parent_birth_on_malformed",
+      "discard_parent_birth_on_unreadable",
+      "discard_partial_spawn_receipt",
+      "filter_by_app_connect",
+      "hold_observation_gate_across_database_read",
+      "ignore_effective_owner_delegation",
+      "ignore_inherited_sigchld_reset",
+      "ignore_public_application_overload",
+      "leave_sampling_admission_open",
+      "numeric_signal_on_error_model",
+      "omit_bare_database_owner",
+      "omit_context_owner_edge",
+      "omit_external_namespace_owner",
+      "omit_implicit_routine_owner",
+      "omit_large_object_owner",
+      "omit_machine_owner_root",
+      "omit_native_memory_routine",
+      "omit_revoked_schema_owner",
+      "omit_schema_ownership",
+      "omit_sequence_ownership",
+      "omit_table_ownership_including_generated_row_types",
+      "omit_type_ownership",
+      "pg_read_all_settings",
+      "pg_read_all_stats",
+      "pg_stat_scan_tables",
+      "recognize_only_direct_routine_owner",
+      "require_extension_for_app_schema",
+      "restore_orphan_driver_numeric_timeout",
+      "signal_recycled_numeric_group_model",
+      "skip_git_lane_static_discovery"
+    ],
+    "run_id": "a0ee9dc367a2424ab4438973e835c76f"
+  },
+  "native_pidfd": 11,
+  "new_regressions": 16,
+  "origins": {
+    "grant_options": 0,
+    "migrations": 259,
+    "policy_sha256": "1bdb4c83f80d992b39d22d6f6d7aca543ab55515256e8c3e5922b703adaa9d6c",
+    "routines": 608,
+    "run_id": "f38e2d1838f2477dac843d2a1e080ee3"
+  },
+  "parent_new_red": 6,
+  "previous_nodes": 16686,
+  "recorder": {
+    "cases": 2,
+    "failures": 2,
+    "run_id": "58e3947d6edd40e2a1bb95c1ac3f1ad8"
+  },
+  "rejected_candidate": {
+    "attribution": {
+      "guard": "Three test modules imported ctypes solely as a type annotation. The unchanged refusal guard rejected those imports. The corrected tests use the actual domain slot, which encapsulates the native cell in ops.testing.pidfd_spawn.",
+      "listener": "A fabricated Popen PID has no kernel process for the supervisor to pin. The corrected fixture substitutes only the workload: the real supervisor pins and reaps a private, pipe-blocked child inheriting the listener."
+    },
+    "chain_exit": 1,
+    "collected": 16702,
+    "errors": 0,
+    "failed": 2,
+    "failed_ids": [
+      "tests/browser/test_browser_server_controller.py::test_controller_keeps_port_bound_through_gunicorn_handoff",
+      "tests/core/test_workspace_guard_static.py::test_no_test_reaches_or_rewrites_the_refusal_guard"
+    ],
+    "passed": 16700,
+    "run_id": "2839b83898a8428cbeedf40e779a0614",
+    "sha": "9f44663bc3b2f4dd18241aae086b947663053117",
+    "skipped": 0,
+    "supplied_release_rows": 0,
+    "tree": "408906b97a296b1d4168a09c5fd3dfa4bfbeed2a",
+    "unit_exit": 1
+  },
+  "restore_guards": 6,
+  "sc5": {
+    "count": 16702,
+    "junit_sha256": "ea87bcc54c64c9de4f4f60dba84115ca7a65a13ba7bb0349057a8a59f628f80e",
+    "manifest_sha256": "a03f992e3cad0cefb19ca9c9414933196af363e783bf186d6a906b24767de939",
+    "reference_sha256": "0b93ae926e0ec9fa60de50747f0e87503be24b73e280079f5649361f2f48157f",
+    "run_id": "095d4e3610e24564b719989c5f8d4b3d",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369"
+  },
+  "sequences": 7,
+  "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+  "strict_source_audit": {
+    "parent": {
+      "files": 38,
+      "findings": 13
+    },
+    "successor": {
+      "files": 46,
+      "findings": 0
+    }
+  },
+  "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+  "unpublished_births_reaped": 4
+}

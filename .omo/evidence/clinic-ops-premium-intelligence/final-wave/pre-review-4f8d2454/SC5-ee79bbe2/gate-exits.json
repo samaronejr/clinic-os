@@ -1,0 +1,104 @@
+{
+  "compat": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "f424636128ce4c0a93737e4f1ca94f55",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "1 failed, 1 passed in 210.08s (0:03:30)",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-compat-ee79bbe2.service"
+  },
+  "corrections": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "bfb6cef0de3a4fb3829752a252223be7",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "2 passed in 4.27s",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-corrections-ee79bbe2.service"
+  },
+  "isolation": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "c80b4dba573c4da5b6489c536271f026",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "3308 passed in 225.10s (0:03:45)",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-isolation-ee79bbe2.service"
+  },
+  "mutations": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "a0ee9dc367a2424ab4438973e835c76f",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "58 failed, 1 passed in 200.92s (0:03:20)",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-mutations-ee79bbe2.service"
+  },
+  "origin": {
+    "exit": 0,
+    "run_id": "f38e2d1838f2477dac843d2a1e080ee3",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-origin-ee79bbe2.service"
+  },
+  "parent": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "e8d749e47a2f4b9c9c0f2e0eb0fc33f2",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "6 failed in 50.95s",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-parent-ee79bbe2.service"
+  },
+  "positive": {
+    "exit": 0,
+    "pytest_exit": 0,
+    "run_id": "bbb021cafdc34d68b99d8a7af5533b87",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "111 passed, 58 deselected in 656.83s (0:10:56)",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-positive-ee79bbe2.service"
+  },
+  "recorder": {
+    "exit": 0,
+    "pytest_exit": 1,
+    "run_id": "58e3947d6edd40e2a1bb95c1ac3f1ad8",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "2 failed in 440.27s (0:07:20)",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-recorder-ee79bbe2.service"
+  },
+  "sc5": {
+    "coverage": "93.59%",
+    "exit": 0,
+    "guards": [
+      126,
+      126
+    ],
+    "pytest_exit": 0,
+    "run_id": "095d4e3610e24564b719989c5f8d4b3d",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "summary": "16702 passed in 14530.29s (4:02:10)",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-sc5-ee79bbe2.service"
+  },
+  "static": {
+    "exit": 0,
+    "files": 2968,
+    "guards": 126,
+    "markers": [
+      "All checks passed!",
+      "2968 files already formatted",
+      "Success: no issues found in 2968 source files",
+      "No changes detected",
+      "System check identified no issues",
+      "database posture: clinic_app runtime",
+      "verified=126 repaired=0 disabled=0"
+    ],
+    "run_id": "6b1d91be285b4cba9e1bd6960dc48a8a",
+    "sha": "ee79bbe27c48c16b48d267272b73bd81aefe3369",
+    "tree": "43d75b35dd452c5a6e6346ae9709bb46229498d0",
+    "unit": "cpi-kek-r4h-static-ee79bbe2.service"
+  }
+}

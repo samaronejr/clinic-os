@@ -1,0 +1,295 @@
+"""Individual catalog-oracle negative controls; no grant is exercised."""
+from contextlib import ExitStack, contextmanager
+import json
+import os
+from pathlib import Path
+import hashlib
+from unittest.mock import patch
+from dataclasses import replace
+
+import psycopg
+from psycopg import sql
+import pytest
+from django.db import connection
+from ops.db import posture
+
+BASE="tests/infra/test_role_family_posture.py::"
+NEW=BASE+"test_grant_and_revoke_behind_admin_only_edge"
+PREVIOUS=BASE+"test_posture_rejects_inheritance_after_a_role_switch"
+GRAPH=BASE+"test_posture_refuses_transitive_set_only_parameter_authority"
+OWNER=BASE+"test_migration_resolver_exception_is_not_an_app_exception"
+SECOND=BASE+"test_connectable_secondary_has_independent_routine_grants"
+UNREADABLE=BASE+"test_connectable_but_uninspectable_database_refuses_posture"
+BIND="tests/infra/test_bound_parameters.py::test_runtime_binds_every_envelope_and_webhook_argument"
+CASES={
+    NEW+"[signal]": "pg_signal_backend", NEW+"[stats]":"pg_read_all_stats",
+    NEW+"[createrole]":"r.rolcreaterole", NEW+"[bypassrls]":"r.rolbypassrls",
+    NEW+"[export]":"lo_export", NEW+"[ls-dir]":"pg_ls_dir",
+    NEW+"[stat-file]":"pg_stat_file", OWNER:"owner_only_exception",
+    SECOND:"inspect_primary_only", UNREADABLE:"allow_uninspectable", GRAPH:"membership_edge",
+    BIND:"client_binding", PREVIOUS+"[read-file]":"pg_read_file",
+    PREVIOUS+"[read-binary-overload]":"pg_read_binary_file",
+    PREVIOUS+"[log-directory]":"pg_ls_logdir", PREVIOUS+"[large-object-import]":"lo_import",
+    PREVIOUS+"[server-files]":"pg_read_server_files",PREVIOUS+"[settings]":"pg_read_all_settings",
+    PREVIOUS+"[write-files]":"pg_write_server_files",PREVIOUS+"[server-program]":"pg_execute_server_program",
+    PREVIOUS+"[superuser]":"r.rolsuper",PREVIOUS+"[alter-system]":"parameter_alter_system",
+}
+CASES.update({
+    BASE+'test_native_memory_routine_direct_grant_refused':'omit_native_memory_routine',
+    BASE+'test_unlisted_restricted_routine_in_extension_schema':'check_extension_members_only',
+    BASE+'test_machine_only_database_keeps_local_grant_in_scope':'filter_by_app_connect',
+    BASE+'test_reachable_database_owner_activates_local_grant':'omit_context_owner_edge',
+    BASE+'test_connection_disabled_database_is_not_skipped':'filter_connection_enabled',
+    BASE+'test_initially_restricted_native_routine_cannot_be_opened_to_public':'ignore_initial_privileges',
+    BASE+'test_private_migrated_helper_does_not_allow_new_runtime_grantee':'ignore_reviewed_audience',
+    PREVIOUS+'[replication]':'r.rolreplication',PREVIOUS+'[scan-tables]':'pg_stat_scan_tables',
+})
+RP="tests/infra/test_routine_policy.py::"
+# Isolate component authority from stock pg_monitor edges/overlapping routine grants.
+for node,comp in ((NEW+'[stats]','pg_read_all_stats'),(PREVIOUS+'[settings]','pg_read_all_settings'),(PREVIOUS+'[scan-tables]','pg_stat_scan_tables')):
+    assert CASES.pop(node)==comp
+    CASES[RP+'test_monitor_component_denied_without_its_overlapping_defaults['+comp+']']=comp
+CASES.update({
+ BASE+'test_bare_database_ownership_denied_without_delegated_routine[clinic_app]':'omit_bare_database_owner',
+ BASE+'test_independent_machine_owner_is_refused':'omit_machine_owner_root',
+ RP+'test_reachable_schema_ownership_is_itself_refused[clinic_app]':'omit_schema_ownership',
+ RP+'test_grant_option_is_not_plain_execute':'discard_grant_options',
+ RP+'test_unknown_overload_is_not_the_reviewed_signature[private]':'collapse_overloads_by_name',
+ RP+'test_unknown_overload_is_not_the_reviewed_signature[public-default]':'ignore_public_application_overload',
+ RP+'test_reviewed_namespace_checked_without_any_extension':'require_extension_for_app_schema',
+})
+OB="tests/infra/test_object_owner_posture.py::"
+OWNER_CASE=OB+"test_owner_without_ordinary_privilege"
+CASES.update({
+    OWNER_CASE+"[routine]":"omit_implicit_routine_owner",
+    OWNER_CASE+"[other-namespace-routine]":"omit_external_namespace_owner",
+    OWNER_CASE+"[table]":"omit_table_ownership_including_generated_row_types",
+    OWNER_CASE+"[sequence]":"omit_sequence_ownership",
+    OWNER_CASE+"[schema]":"omit_revoked_schema_owner",
+    OWNER_CASE+"[type]":"omit_type_ownership",
+    OB+"test_two_hop_owner_without_ordinary_execute":"recognize_only_direct_routine_owner",
+    OB+"test_empty_large_object_owner_without_ordinary_read":"omit_large_object_owner",
+    OB+"test_reachable_approved_owner_requires_delegation_for_runtime_root":"ignore_effective_owner_delegation",
+    "tests/infra/test_posture_group_identity.py::test_recycled_group_never_receives_an_owned_cleanup_signal":"signal_recycled_numeric_group_model",
+})
+
+MODEL='tests/infra/test_posture_signal_custody.py::'
+LOSS=MODEL+'test_lost_number_cannot_authorize_error_cleanup'
+CASES.update({LOSS+'[inherited-ignore]':'ignore_inherited_sigchld_reset',
+              LOSS+'[inherited-default]':'numeric_signal_on_error_model',
+              LOSS+'[partial-spawn]':'discard_partial_spawn_receipt',
+              MODEL+'test_closing_process_window_precedes_late_sample':'leave_sampling_admission_open',
+              MODEL+'test_inflight_proc_read_finishes_before_release_not_database_wait':'hold_observation_gate_across_database_read'})
+NEW_ASSERT={'ignore_inherited_sigchld_reset':'kernel.dispositions == [signal.SIG_DFL]',
+            'numeric_signal_on_error_model':'kernel.foreign == []','discard_partial_spawn_receipt':'kernel.reaped',
+            'leave_sampling_admission_open':'reads == []',
+            'hold_observation_gate_across_database_read':'closed.wait(timeout=3)'}
+BIRTH='tests/infra/test_posture_birth_custody.py::'
+NORECEIPT=BIRTH+'test_interrupted_outer_without_usable_receipt_is_already_reaped'
+LOST_BIRTH={NORECEIPT+'['+v+']':'discard_parent_birth_on_'+n for v,n in [('eof','eof'),('malformed','malformed'),('unreadable','unreadable'),('silent-live','live_silent_gate')]}
+DRIVER=BIRTH+'test_orphan_driver_timeout_uses_handle_runner'
+SCAN='tests/infra/test_kek_signal_audit.py::test_entire_kek_lane_has_no_numeric_signal_fallback'
+CASES.update({**LOST_BIRTH,DRIVER:'restore_orphan_driver_numeric_timeout',SCAN:'skip_git_lane_static_discovery'})
+NEW_ASSERT.update({**{v:'already_reaped' for v in LOST_BIRTH.values()},'restore_orphan_driver_numeric_timeout':'numeric == []','skip_git_lane_static_discovery':'sources'})
+_RUN={}
+
+def change(stack, attr, old, new):
+    original=getattr(posture,attr)
+    text=original if isinstance(original,str) else original.as_string()
+    assert text.count(old)==1, attr
+    updated=text.replace(old,new)
+    stack.enter_context(patch.object(posture,attr,updated if isinstance(original,str) else sql.SQL(updated)))
+
+
+
+
+def pytest_collection_modifyitems(items):
+    assert len(items)==len(CASES) and {i.nodeid for i in items}==set(CASES)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    kind = CASES[item.nodeid]
+    gate = posture.SAFE_ROLE_FAMILY_QUERY.as_string()
+    with ExitStack() as stack:
+        if kind=="signal_recycled_numeric_group_model":
+            lifetime=item.module.lifetime; original=lifetime.reap_tree
+            def wrong_order(proc):
+                # The inherited regression substitutes a class, never the real OS.
+                sink=lifetime.os
+                assert isinstance(sink,type) and sink.__module__==item.module.__name__ and sink is not os
+                if proc.returncode is not None:sink.killpg(proc.pid,__import__('signal').SIGKILL)
+                return original(proc)
+            stack.enter_context(patch.object(lifetime,'reap_tree',wrong_order))
+        elif kind=='ignore_inherited_sigchld_reset':
+            @contextmanager
+            def no_reset():yield 'ignored'
+            for mod in (item.module.custody,item.module.worker):stack.enter_context(patch.object(mod,'waitable_children',no_reset))
+        elif kind=='numeric_signal_on_error_model':
+            lifetime=item.module.custody;original=lifetime.finish
+            def stale(fd,until,**kw):
+                sink=getattr(os.killpg,'__self__',None)
+                assert isinstance(sink,item.module._ReuseKernel) and sink.reused.is_set()
+                sink.by_number(sink.leader.pid,__import__('signal').SIGKILL)
+                return original(fd,until,**kw)
+            stack.enter_context(patch.object(lifetime,'finish',stale))
+        elif kind=='discard_partial_spawn_receipt' or kind in LOST_BIRTH.values():
+            # Omit publication of the one *authoritative* token on interrupted
+            # creation. It is now the birth-slot descriptor, not SCM_RIGHTS.
+            # The literal r4g SCM_RIGHTS omission is also tested in gate-compat.
+            cls=item.module._ReuseKernel if kind=='discard_partial_spawn_receipt' else item.module._InterruptedBirth
+            attr='spawn' if kind=='discard_partial_spawn_receipt' else 'native_birth'
+            original=getattr(cls,attr)
+            def no_birth(self,slot,plan):
+                assert isinstance(self,cls)
+                try:return original(self,slot,plan)
+                except OSError:
+                    if slot.value>=0:
+                        os.close(slot.value);slot.value=-1
+                    raise
+            stack.enter_context(patch.object(cls,attr,no_birth))
+        elif kind=='restore_orphan_driver_numeric_timeout':
+            # Put the actual reviewed timeout implementation back under the
+            # new test; that test installs its inert recorder before calling it.
+            import ast, subprocess
+            name='test_successful_leader_with_surviving_owned_child_is_reaped'
+            source=subprocess.check_output(['git','show','26a2a86b4873b2bcfea74ac42a9e7700a0661d14:tests/infra/test_posture_group_identity.py'],text=True)
+            fn=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name==name)
+            ns=dict(item.module.orphan_driver.__dict__);ns['subprocess']=subprocess
+            exec(compile(ast.Module(body=[fn],type_ignores=[]),'<reviewed driver>', 'exec'),ns)
+            def rerun_reviewed():
+                assert subprocess.run.__module__==item.module.__name__ and subprocess.run.__name__=='legacy'
+                ns[name]()
+            stack.enter_context(patch.object(item.module.orphan_driver,name,rerun_reviewed))
+        elif kind=='skip_git_lane_static_discovery':
+            stack.enter_context(patch.object(item.module.audit,'scope',lambda *args,**kw:{}))
+        elif kind=='leave_sampling_admission_open':
+            stack.enter_context(patch.object(item.module.observation.ProcessWindow,'close',lambda self:None))
+        elif kind=='hold_observation_gate_across_database_read':
+            def bad_sample(db,window,stop,records):
+                # The fixture uses only Event-controlled in-memory readers.
+                assert item.module.worker.activity.__module__==item.module.__name__
+                with window._lock:
+                    item.module.observation.process_group(window._fd)
+                    try:item.module.worker.activity(db)
+                    finally:
+                        # Keep the erroneous DB critical section open until the
+                        # test starts its own unwind. This also makes the precise
+                        # checkpoint independent of the two failure-guard timers.
+                        assert stop.wait(timeout=12)
+            stack.enter_context(patch.object(item.module.worker,'_sample',bad_sample))
+        elif kind in {'omit_implicit_routine_owner','recognize_only_direct_routine_owner'}:
+            old="OR (family.login <> 'clinic_owner' AND family.oid = p.proowner)"
+            new='' if kind=='omit_implicit_routine_owner' else old[:-1]+" AND family.login = pg_get_userbyid(p.proowner))"
+            change(stack,'RESTRICTED_ROUTINES',old,new)
+        elif kind=='omit_external_namespace_owner':
+            change(stack,'RESTRICTED_ROUTINES',"OR p.proowner IN (SELECT oid FROM family WHERE login <> 'clinic_owner')",'')
+        elif kind=='omit_table_ownership_including_generated_row_types':
+            # A table, its implicit row type and its array are one ownership unit.
+            change(stack,'SAFE_OBJECT_OWNERS','c.relowner = f.oid','c.relowner = f.oid AND c.relkind <> \'r\'')
+            change(stack,'SAFE_OBJECT_OWNERS','t.typowner = f.oid',"t.typowner = f.oid AND NOT EXISTS (SELECT FROM pg_class tc JOIN pg_type rt ON rt.oid=tc.reltype WHERE tc.relkind='r' AND t.oid IN (tc.reltype,rt.typarray))")
+        elif kind=='omit_sequence_ownership':
+            change(stack,'SAFE_OBJECT_OWNERS','c.relowner = f.oid',"c.relowner = f.oid AND c.relkind <> 'S'")
+        elif kind=='omit_large_object_owner':
+            change(stack,'SAFE_OBJECT_OWNERS','l.lomowner = f.oid','FALSE')
+        elif kind=='omit_type_ownership':
+            change(stack,'SAFE_OBJECT_OWNERS','t.typowner = f.oid','FALSE')
+        elif kind=='omit_revoked_schema_owner':
+            change(stack,'SAFE_ROLE_FAMILY_QUERY','EXISTS (SELECT FROM pg_namespace ns WHERE ns.nspowner = r.oid)','FALSE')
+        elif kind=='ignore_effective_owner_delegation':
+            change(stack,'RESTRICTED_ROUTINES','p.delegators, reached.logins, reached.owner_roots','p.delegators, reached.logins, ARRAY[]::name[]')
+        elif kind=="client_binding":
+            original=item.module.runtime_connection
+            @contextmanager
+            def producer():
+                def guard(execute,sql_text,params,many,context):
+                    if params and sql_text!="SELECT %s::text":
+                        raise RuntimeError("only public canary may run in mutated producer")
+                    return execute(sql_text,params,many,context)
+                with (original() as name, patch.dict(connection.settings_dict["OPTIONS"],server_side_binding=False),
+                      connection.execute_wrapper(guard)):
+                    yield name
+            stack.enter_context(patch.object(item.module,"runtime_connection",producer))
+        elif kind in {"inspect_primary_only","filter_by_app_connect","filter_connection_enabled"}:
+            condition={"inspect_primary_only":"datname=current_database()","filter_by_app_connect":"has_database_privilege('clinic_app',oid,'CONNECT')","filter_connection_enabled":"datallowconn"}[kind]
+            change(stack,'ALL_DATABASES','ORDER BY','WHERE '+condition+' ORDER BY')
+        elif kind=='allow_uninspectable':
+            original=posture._inspect_database_authority
+            def ignore_uninspectable(*a,**kw):
+                try: return original(*a,**kw)
+                except psycopg.OperationalError: return True
+            stack.enter_context(patch.object(posture,'_inspect_database_authority',ignore_uninspectable))
+        elif kind=='check_extension_members_only':
+            change(stack,'RESTRICTED_ROUTINES','OR n.oid IN (SELECT extnamespace FROM pg_extension)','')
+            change(stack,'RESTRICTED_ROUTINES','n.oid IN (SELECT pronamespace FROM extension_members)','p.oid IN (SELECT oid FROM extension_members)')
+        elif kind=='omit_context_owner_edge':
+            change(stack,'RESTRICTED_ROUTINES','WHERE datname = pg_catalog.current_database()','WHERE FALSE')
+        elif kind=='ignore_initial_privileges':
+            change(stack,'RESTRICTED_ROUTINES','i.initprivs IS NOT NULL AND NOT EXISTS','FALSE AND NOT EXISTS')
+        elif kind=='ignore_reviewed_audience':
+            # Widen only a pinned helper to the staff app, leaving unlisted/native checks intact.
+            allowed={k:replace(v,grantees=v.grantees|{'clinic_app'}) for k,v in posture._routine_exceptions().items()}
+            stack.enter_context(patch.object(posture,'_routine_exceptions',lambda:allowed))
+        elif kind in {'pg_read_file','pg_read_binary_file','pg_ls_logdir','lo_import','lo_export','pg_ls_dir','pg_stat_file','omit_native_memory_routine'}:
+            name=kind if kind!='omit_native_memory_routine' else 'pg_log_backend_memory_contexts'
+            change(stack,'RESTRICTED_ROUTINES','WHERE reached.logins IS NOT NULL',"WHERE reached.logins IS NOT NULL AND p.proname <> '"+name+"'")
+        elif kind in {'pg_read_all_stats','pg_read_all_settings','pg_stat_scan_tables'}:
+            change(stack,'SAFE_ROLE_FAMILY_QUERY',"'"+kind+"'",'NULL')
+        elif kind=='omit_bare_database_owner':
+            change(stack,'SAFE_ROLE_FAMILY_QUERY',"r.oid = 'pg_database_owner'::regrole",'FALSE')
+        elif kind=='omit_machine_owner_root':
+            change(stack,'SAFE_ROLE_FAMILY_QUERY',"family.login <> 'clinic_owner'", "family.login = 'clinic_app'")
+        elif kind=='omit_schema_ownership':
+            change(stack,'SAFE_ROLE_FAMILY_QUERY','EXISTS (SELECT FROM pg_namespace ns WHERE ns.nspowner = r.oid)','FALSE')
+        elif kind=='discard_grant_options':
+            change(stack,'RESTRICTED_ROUTINES','p.delegators, reached.logins','ARRAY[]::text[], reached.logins')
+        elif kind=='collapse_overloads_by_name':
+            change(stack,'RESTRICTED_ROUTINES','SELECT p.*, n.nspname','SELECT DISTINCT ON (p.pronamespace, p.proname) p.*, n.nspname')
+            change(stack,'RESTRICTED_ROUTINES','      ))\n)', '      )) ORDER BY p.pronamespace, p.proname, p.oid\n)')
+        elif kind=='ignore_public_application_overload':
+            change(stack,'RESTRICTED_ROUTINES',"WHERE (n.nspname = 'clinic_app'", "WHERE (n.nspname = 'clinic_app' AND p.proacl IS NOT NULL AND NOT EXISTS (SELECT FROM aclexplode(p.proacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')")
+        elif kind=='require_extension_for_app_schema':
+            change(stack,'RESTRICTED_ROUTINES',"WHERE (n.nspname = 'clinic_app'", "WHERE (n.nspname = 'clinic_app' AND n.oid IN (SELECT extnamespace FROM pg_extension)")
+        else:
+            if kind.startswith('r.'): old,new=kind,'FALSE'
+            elif kind=='membership_edge': old='JOIN family ON membership.member = family.oid'; new=old+' AND FALSE'
+            elif kind=='owner_only_exception': old,new="family.login = 'clinic_owner'",'TRUE'
+            elif kind=='parameter_alter_system': old,new="'SET, ALTER SYSTEM'","'SET'"
+            else: old,new="'"+kind+"'",'NULL'
+            change(stack,'SAFE_ROLE_FAMILY_QUERY',old,new)
+        yield
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item,call):
+    rep=yield
+    if rep.when=="call":
+        kind=CASES[item.nodeid]
+        assertion=("" if call.excinfo is None else str(call.excinfo.value))
+        if kind=="signal_recycled_numeric_group_model":expected="== []"
+        elif kind=="client_binding": expected="expected only this SQL template: SELECT $1::text"
+        elif kind=="owner_only_exception": expected="assert (True,) == (False,)"
+        else: expected="assert not True"
+        if kind in NEW_ASSERT and call.excinfo is not None:
+            import ast
+            tb=call.excinfo.traceback[-1];line=tb.lineno+1
+            test=next((n for n in ast.walk(ast.parse(Path(item.path).read_text())) if isinstance(n,ast.Assert) and n.lineno<=line<=n.end_lineno),None)
+            expected=NEW_ASSERT[kind]
+            expected_ok=bool(call.excinfo.type is AssertionError and str(tb.path)==str(item.path) and test and ast.unparse(test.test)==expected)
+        else:expected_ok=bool(call.excinfo and call.excinfo.type==AssertionError and expected in assertion)
+        _RUN[item.nodeid]={
+            "control":kind,"outcome":rep.outcome,"phase":rep.when,
+            "expected_assertion":expected,
+            "expected_failure":expected_ok,
+        }
+    return rep
+
+
+def pytest_sessionfinish(session,exitstatus):
+    # Record statuses only: no SQL, fixture values, exception text or locals.
+    with Path(os.environ["R4E_MUTATIONS"]).open("x") as f:
+        json.dump({"sha":os.environ["R4E_SHA"],"run_id":os.environ["INVOCATION_ID"],"exit":int(exitstatus),"cases":_RUN},f,sort_keys=True)
+
+
+if __name__=="__main__":
+    for case in CASES: print(case)
