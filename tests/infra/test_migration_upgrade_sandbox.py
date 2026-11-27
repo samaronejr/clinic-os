@@ -2,17 +2,30 @@
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from ops.testing.migration_upgrade_custody import interpreter_prefixes
 
 SANDBOX = (
     Path(__file__).resolve().parents[2] / "ops/testing/migration_upgrade_sandbox.py"
 )
 BWRAP = shutil.which("bwrap") or "bwrap"
+# The child needs its interpreter, as the wrapper's children need the project.
+READ_ONLY_ENV = {
+    "UPGRADE_SANDBOX_READ_ONLY": os.pathsep.join(
+        {
+            str(Path(sys.executable).parent.parent),
+            str(Path(sys.base_prefix).resolve()),
+            *interpreter_prefixes(sys.executable),
+        }
+    )
+}
 NAME = "migration-upgrade-secrets." + "a" * 32
 INSIDE = f"/dev/shm/{NAME}"  # noqa: S108 - the sandbox's private mount point
 TMP_INSIDE = f"{INSIDE}/tmp"  # noqa: S108 - an entry of that mount
@@ -34,6 +47,7 @@ class Run:
         *arguments: str,
         cwd: str | None = None,
         env: dict[str, str] | None = None,
+        read_only: tuple[Path, ...] = (),
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(  # noqa: S603 - fixed launcher under test
             [
@@ -54,8 +68,13 @@ class Run:
             capture_output=True,
             text=True,
             check=False,
-            cwd=cwd,
-            env=env,
+            cwd=cwd or "/usr",
+            env={
+                **(env or os.environ),
+                "UPGRADE_SANDBOX_READ_ONLY": os.pathsep.join(
+                    [READ_ONLY_ENV["UPGRADE_SANDBOX_READ_ONLY"], *map(str, read_only)]
+                ),
+            },
         )
 
 
@@ -118,7 +137,10 @@ def test_links_and_escapes_never_reach_a_writable_foreign_inode(
     result = run.python(WRITE, target, "w")
 
     assert result.returncode != 0
-    assert "OSError" in result.stderr
+    # The foreign path is not mounted at all, or is mounted read-only.
+    assert any(
+        e in result.stderr for e in ("OSError", "FileNotFoundError", "PermissionError")
+    )
     _unchanged(foreign)
     assert not (run.root.parent / "escaped").exists()
 
@@ -230,8 +252,333 @@ def test_a_host_submount_cannot_be_written_through_a_link(
         capture_output=True,
         text=True,
         check=False,
+        cwd="/usr",
+        env={**os.environ, **READ_ONLY_ENV},
     )
 
     assert result.returncode != 0
-    assert "Read-only file system" in result.stderr, result.stderr
+    assert any(e in result.stderr for e in ("Read-only file system", "No such file"))
     assert victim.read_bytes() == b"foreign\n"
+
+
+UNSHARE = shutil.which("unshare") or "/usr/bin/unshare"
+HELPER = Path(__file__).resolve().parent / "sandbox_late_mount_helper.py"
+
+
+def test_a_host_mount_made_after_the_child_starts_is_neither_visible_nor_writable(
+    run: Run, tmp_path: Path
+) -> None:
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    read_only = os.pathsep.join(
+        [READ_ONLY_ENV["UPGRADE_SANDBOX_READ_ONLY"], str(shared), str(HELPER.parent)]
+    )
+
+    result = subprocess.run(  # noqa: S603 - fixed helper in a private namespace
+        [
+            UNSHARE,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--propagation",
+            "shared",
+            sys.executable,
+            str(HELPER),
+            str(shared),
+            str(SANDBOX),
+            str(run.run_fd),
+            NAME,
+            read_only,
+            sys.executable,
+        ],
+        pass_fds=(run.run_fd,),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    # A mount the host made after the child started never reaches the child: it
+    # does not see the host's file, cannot write through a link to it, and the
+    # host's file is exactly what the host put there.
+    assert "SEEN ['target']" not in result.stdout, result.stdout
+    assert "WROTE" not in result.stdout, result.stdout
+    assert "NOT-WRITTEN" in result.stdout, result.stdout
+    assert "HOST-TARGET secret" in result.stdout, result.stdout
+
+
+def test_links_to_inherited_stdio_never_reopen_the_hosts_files(
+    run: Run, tmp_path: Path
+) -> None:
+    prefix = b"HOST-FILE\n"
+    host = {name: tmp_path / name for name in ("stdin", "stdout", "stderr")}
+    for path in host.values():
+        path.write_bytes(prefix)
+    for number in range(3):
+        (run.root / f"proc{number}").symlink_to(f"/proc/self/fd/{number}")
+        (run.root / f"dev{number}").symlink_to(f"/dev/fd/{number}")
+    code = (
+        "import sys\n"
+        "for kind in ('proc', 'dev'):\n"
+        "    for number in range(3):\n"
+        "        try:\n"
+        f"            open(f'{INSIDE}/{{kind}}{{number}}', 'w').write('PWN')\n"
+        "        except OSError as error:\n"
+        "            print('refused', kind, number, error.errno, file=sys.stderr)\n"
+    )
+    with (
+        host["stdin"].open("rb") as stdin,
+        host["stdout"].open("ab") as stdout,
+        host["stderr"].open("ab") as stderr,
+    ):
+        result = subprocess.run(  # noqa: S603 - fixed launcher under test
+            [
+                sys.executable,
+                str(SANDBOX),
+                str(run.pid),
+                str(run.run_fd),
+                NAME,
+                f"{run.entry_fd}:tmp",
+                "--",
+                sys.executable,
+                "-I",
+                "-c",
+                code,
+            ],
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            pass_fds=(run.run_fd, run.entry_fd),
+            cwd="/usr",
+            env={**os.environ, **READ_ONLY_ENV},
+            check=False,
+            timeout=60,
+        )
+
+    assert result.returncode == 0
+    # Nothing the child wrote could reopen, truncate or overwrite a host file.
+    assert host["stdin"].read_bytes() == prefix
+    for stream in ("stdout", "stderr"):
+        assert host[stream].read_bytes().startswith(prefix), stream
+
+
+ESCAPE_HELPER = Path(__file__).resolve().parent / "sandbox_userns_escape_helper.py"
+NO_LANDLOCK_HELPER = (
+    Path(__file__).resolve().parent / "sandbox_without_landlock_helper.py"
+)
+
+
+def test_a_same_user_process_cannot_lift_the_sandbox_by_clearing_a_mount_flag(
+    run: Run, foreign: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """The architect's escape: enter the sandbox's namespaces, clear MS_RDONLY."""
+    _, marker = foreign
+    (run.root / "planted").symlink_to(marker)
+    code = (
+        "import sys\n"
+        "print('READY', flush=True)\n"
+        "sys.stdin.readline()\n"
+        "try:\n"
+        "    open(sys.argv[1], 'w').write('PWN')\n"
+        "    print('WROTE', flush=True)\n"
+        "except OSError as error:\n"
+        "    print('REFUSED', error.errno, flush=True)\n"
+    )
+    read_only = os.pathsep.join(
+        [READ_ONLY_ENV["UPGRADE_SANDBOX_READ_ONLY"], str(tmp_path)]
+    )
+    command = [
+        sys.executable,
+        str(SANDBOX),
+        str(run.pid),
+        str(run.run_fd),
+        NAME,
+        "--",
+        sys.executable,
+        "-I",
+        "-c",
+        code,
+        f"{INSIDE}/planted",
+    ]
+    environment = {
+        **os.environ,
+        "UPGRADE_SANDBOX_READ_ONLY": read_only,
+        "UPGRADE_SANDBOX_STDIN": "pipe",
+    }
+    with subprocess.Popen(  # noqa: S603 - fixed launcher under test
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        cwd="/usr",
+        pass_fds=(run.run_fd,),
+        env=environment,
+    ) as child:
+        assert child.stdout is not None
+        assert child.stdin is not None
+        assert child.stdout.readline().strip() == "READY"
+        attack = subprocess.run(  # noqa: S603 - fixed helper acting as the peer
+            [sys.executable, str(ESCAPE_HELPER), str(child.pid), str(tmp_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        # The attack must have reached the flag, or the test proves nothing.
+        assert attack.stdout.strip() == "CLEARED", attack.stdout + attack.stderr
+        child.stdin.write("GO\n")
+        child.stdin.close()
+        outcome = child.stdout.read()
+
+    assert "WROTE" not in outcome, outcome
+    assert "REFUSED" in outcome, outcome
+    assert marker.read_bytes() == b"foreign\n"
+
+
+def test_a_kernel_without_landlock_refuses_to_run_the_child(run: Run) -> None:
+    result = subprocess.run(  # noqa: S603 - fixed launcher under test
+        [
+            sys.executable,
+            str(NO_LANDLOCK_HELPER),
+            str(SANDBOX),
+            str(run.pid),
+            str(run.run_fd),
+            NAME,
+            "--",
+            sys.executable,
+            "-I",
+            "-c",
+            f"open('{INSIDE}/ran', 'w').write('x')",
+        ],
+        pass_fds=(run.run_fd,),
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd="/usr",
+        env={**os.environ, **READ_ONLY_ENV},
+    )
+
+    assert result.returncode == 125, result.stderr
+    assert "sandbox_landlock_unavailable" in result.stderr
+    assert not (run.root / "ran").exists()
+
+
+def test_a_child_is_given_no_host_service_to_delegate_to(
+    run: Run, tmp_path: Path
+) -> None:
+    # A pathname socket must fit in 107 bytes, which pytest's long temp roots do not.
+    directory = Path(tempfile.mkdtemp(prefix="ll"))
+    service = directory / "s.sock"
+    server = socket.socket(socket.AF_UNIX)
+    server.bind(str(service))
+    server.listen(1)
+    code = (
+        "import os, socket, sys\n"
+        "scrubbed = ('DOCKER', 'SSH', 'DBUS', 'XDG_RUNTIME', 'DISPLAY')\n"
+        "keys = sorted(k for k in os.environ if k.startswith(scrubbed))\n"
+        "print('ENV', keys)\n"
+        "print('DOCKER_SOCKET', os.path.exists('/run/docker.sock'))\n"
+        "print('FDS', sorted(int(n) for n in os.listdir('/proc/self/fd')))\n"
+        "try:\n"
+        "    socket.socket(socket.AF_UNIX).connect(sys.argv[1])\n"
+        "    print('CONNECTED')\n"
+        "except OSError as error:\n"
+        "    print('CONNECT', type(error).__name__)\n"
+    )
+    environment = {
+        **os.environ,
+        "DOCKER_HOST": "unix:///run/docker.sock",
+        "SSH_AUTH_SOCK": str(service),
+        "DBUS_SESSION_BUS_ADDRESS": f"unix:path={service}",
+        "XDG_RUNTIME_DIR": str(directory),
+        "DISPLAY": ":0",
+    }
+    try:
+        result = run.python(code, str(service), env=environment, read_only=(directory,))
+    finally:
+        server.close()
+        shutil.rmtree(directory)
+
+    assert result.returncode == 0, result.stderr
+    assert "ENV []" in result.stdout, result.stdout
+    assert "DOCKER_SOCKET False" in result.stdout, result.stdout
+    assert "FDS [0, 1, 2, 3]" in result.stdout, result.stdout
+    assert "CONNECT PermissionError" in result.stdout, result.stdout
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "A same-user process that enters the sandbox's namespaces can mount a "
+        "foreign directory under the run directory, and a path-based policy then "
+        "counts it as inside. Only a different principal, a protected runner, "
+        "closes this; the claim records it."
+    ),
+)
+def test_a_same_user_process_cannot_mount_a_foreign_directory_into_the_run(
+    run: Run, tmp_path: Path
+) -> None:
+    victim_directory = tmp_path / "victim-directory"
+    victim_directory.mkdir()
+    victim = victim_directory / "victim"
+    victim.write_bytes(b"ORIGINAL")
+    (run.root / "x").mkdir()
+    code = (
+        "import sys\n"
+        "print('READY', flush=True)\n"
+        "sys.stdin.readline()\n"
+        "try:\n"
+        "    open(sys.argv[1], 'w').write('PWN')\n"
+        "except OSError as error:\n"
+        "    print('REFUSED', error.errno, flush=True)\n"
+    )
+    environment = {
+        **os.environ,
+        "UPGRADE_SANDBOX_READ_ONLY": os.pathsep.join(
+            [READ_ONLY_ENV["UPGRADE_SANDBOX_READ_ONLY"], str(tmp_path)]
+        ),
+        "UPGRADE_SANDBOX_STDIN": "pipe",
+    }
+    command = [
+        sys.executable,
+        str(SANDBOX),
+        str(run.pid),
+        str(run.run_fd),
+        NAME,
+        "--",
+        sys.executable,
+        "-I",
+        "-c",
+        code,
+        f"{INSIDE}/x/victim",
+    ]
+    with subprocess.Popen(  # noqa: S603 - fixed launcher under test
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        cwd="/usr",
+        pass_fds=(run.run_fd,),
+        env=environment,
+    ) as child:
+        assert child.stdout is not None
+        assert child.stdin is not None
+        assert child.stdout.readline().strip() == "READY"
+        attack = subprocess.run(  # noqa: S603 - fixed helper acting as the peer
+            [
+                sys.executable,
+                str(ESCAPE_HELPER),
+                str(child.pid),
+                f"{INSIDE}/x",
+                str(victim_directory),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert attack.stdout.strip() == "CLEARED", attack.stdout + attack.stderr
+        child.stdin.write("GO\n")
+        child.stdin.close()
+        child.stdout.read()
+
+    assert victim.read_bytes() == b"ORIGINAL"
