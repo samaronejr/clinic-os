@@ -33,7 +33,7 @@ PUBLICATIONS = {
         ),
         frozenset(
             {
-                ("clinic_app", "billing_fiscal_access(uuid)"),
+                ("clinic_app", 'billing_fiscal_access("uuid")'),
                 ("clinic_app", "billing_fiscal_guard()"),
                 ("clinic_app", "billing_fiscal_snapshot()"),
             }
