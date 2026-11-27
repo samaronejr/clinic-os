@@ -584,8 +584,10 @@ Migrations that only create new tables may publish their schema and Django
 record together in one transaction. They may read an existing relation or
 reference it with a foreign key. The F6 atomic allowlist admits only reviewed
 operation hashes; the disposable predecessor rehearsal checks old definitions,
-relation locks, grants and comments. It does not prove behavior on unexecuted
-data branches or cover cluster settings. Protected-field migrations are
+relation locks, grants and comments. It also checks old row multisets and
+sequence values after commit, allowing only the single Django recorder row
+and its one ID allocation. It does not prove behavior on unexecuted data
+branches or cover cluster settings. Protected-field migrations are
 irreversible; rollback is restore. Older non-atomic migrations outside this
 list are not covered by the F6 recovery protocol. The journal is deployment metadata, not application
 content; a logical data restore does not copy it from the source.

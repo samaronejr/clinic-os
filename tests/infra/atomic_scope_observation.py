@@ -1,4 +1,4 @@
-"""Observe the four F6 publication laws on a quiescent predecessor clone."""
+"""Observe the F6 publication laws on a quiescent predecessor clone."""
 
 from __future__ import annotations
 
@@ -17,16 +17,19 @@ from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 from psycopg import sql
 
+from database_urls import database_url_for_name
+from infra.atomic_scope_data import committed_data, recorded_row
+
 if TYPE_CHECKING:
     import pytest
     from apps.tenancy.migrations._resumable_schema import MigrationKey
     from django.db.backends.postgresql.base import DatabaseWrapper
-    from django.db.migrations import Migration
+
+    from infra.atomic_scope_data import RecorderRow, Relation
 
 type Address = tuple[int, int]
 type ACL = dict[Address, tuple[str, ...]]
 type Comments = dict[tuple[int, int, int], str]
-type Relation = tuple[str, str, str, int | None]
 type Names = frozenset[tuple[str, str]]
 
 _RELATIONS = """
@@ -147,37 +150,23 @@ def _new_relations_match(
     )
 
 
-def laws_broken(
+def _apply_and_observe_locks(
     db: DatabaseWrapper,
     key: MigrationKey,
-    publication: Publication,
+    old: dict[int, Relation],
     monkeypatch: pytest.MonkeyPatch,
-    migration: Migration | None = None,
-) -> set[str]:
-    """Commit one real migration, observing its relation locks before the recorder."""
-    old = _relations(db)
-    includes = [
-        f"--table={sql.Identifier(ns, name).as_string()}"
-        for ns, name, kind, _ in old.values()
-        if kind in {"r", "p", "f", "m", "v", "S"}
-    ]
-    assert includes
-    relations = _blocks(_dump_schema(db, "--strict-names", *includes))
-    other_selection = ("--exclude-table=*.*", "--no-acl", "--no-comments")
-    other = _blocks(_dump_schema(db, *other_selection))
-    authority = _authority(db)
+) -> tuple[RecorderRow, set[str]]:
     executor = MigrationExecutor(db)
     [(actual, backwards)] = executor.migration_plan([key])
     assert not backwards
     assert (actual.app_label, actual.name) == key
-    if migration is not None:
-        assert (migration.app_label, migration.name) == key
     record = MigrationRecorder.record_applied
     violations: set[str] = set()
     observed = False
+    entry: RecorderRow | None = None
 
     def before_record(recorder: MigrationRecorder, app: str, name: str) -> None:
-        nonlocal observed
+        nonlocal entry, observed
         assert (app, name) == key
         assert db.in_atomic_block
         assert not observed
@@ -190,20 +179,49 @@ def laws_broken(
             if any(oid in old and mode not in _ALLOWED_LOCKS for oid, mode in cursor):
                 violations.add("L3")
         record(recorder, app, name)
+        entry = recorded_row(db, app, name)
 
     applied = set(executor.recorder.applied_migrations())
     with monkeypatch.context() as patch:
         patch.setattr(MigrationRecorder, "record_applied", before_record)
-        if migration is not None:
-            # Django executes the loader's migration, not an equivalent object
-            # passed in a custom plan.
-            patch.setattr(actual, "operations", migration.operations)
         executor.migrate([key])
     assert observed
     assert not db.in_atomic_block
     assert set(executor.recorder.applied_migrations()) == applied | {key}
+    assert entry is not None
+    return entry, violations
 
+
+def laws_broken(
+    db: DatabaseWrapper,
+    key: MigrationKey,
+    publication: Publication,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    admin_url: str,
+) -> set[str]:
+    """Commit one real migration and compare its before and after effects."""
+    old = _relations(db)
+    observer_url = database_url_for_name(admin_url, str(db.settings_dict["NAME"]))
+    before_data = committed_data(observer_url, old)
+    includes = [
+        f"--table={sql.Identifier(ns, name).as_string()}"
+        for ns, name, kind, _ in old.values()
+        if kind in {"r", "p", "f", "m", "v", "S"}
+    ]
+    assert includes
+    relations = _blocks(_dump_schema(db, "--strict-names", *includes))
+    other_selection = ("--exclude-table=*.*", "--no-acl", "--no-comments")
+    other = _blocks(_dump_schema(db, *other_selection))
+    authority = _authority(db)
+    entry, violations = _apply_and_observe_locks(db, key, old, monkeypatch)
     current = _relations(db)
+    surviving_old = {
+        oid: relation for oid, relation in old.items() if current.get(oid) == relation
+    }
+    after_data = committed_data(observer_url, surviving_old, entry)
+    if not after_data.preserves(before_data, entry):
+        violations.add("L5")
     if not _new_relations_match(old, current, publication) or relations != _blocks(
         _dump_schema(db, "--strict-names", *includes)
     ):
