@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import time
 from contextlib import contextmanager
@@ -14,6 +13,7 @@ from typing import TYPE_CHECKING
 import psycopg
 import pytest
 
+from infra.posture_child_lifetime import owned_spawn, waitable_children, worker_output
 from infra.posture_observation import checkpoint
 from infra.test_db_posture_url import MAKE_TIMEOUT_SECONDS
 from isolated_pg_fixtures import migrated_lease, set_cluster_environment
@@ -57,17 +57,17 @@ def _run(lease: ProvisionedDatabase, *, blocked: bool = False) -> dict[str, obje
                 f"{sys.executable} -I "
                 f"{Path(__file__).with_name('posture_blocked_uv.py')}",
             )
-        result = subprocess.run(
-            (sys.executable, "-m", "infra.posture_trace_worker"),
-            capture_output=True,
-            check=True,
-            # Outer bound for interpreter/monitor startup and teardown; the
-            # independently timed Make verdict below remains strictly <15 s.
-            timeout=MAKE_TIMEOUT_SECONDS + 16,
-            cwd=Path(__file__).resolve().parents[2],
-        )
-    value = json.loads(result.stdout)
+        # The outer worker also has a handle-bound private kill domain. Never
+        # use subprocess.run(timeout=...), whose error path signals by PID.
+        until = time.monotonic() + MAKE_TIMEOUT_SECONDS + 16
+        with (
+            waitable_children() as inherited,
+            owned_spawn("worker", until) as (proc, identity),
+        ):
+            stdout = worker_output(proc, identity, until)
+    value = json.loads(stdout)
     assert isinstance(value, dict)
+    value["launcher_wait"] = {"inherited": inherited, "restored": True}
     return value
 
 

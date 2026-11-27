@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
-import select
-import signal
-import subprocess
 import sys
 import time
 from concurrent.futures import Future
@@ -19,7 +15,12 @@ from typing import IO, TYPE_CHECKING
 import psycopg
 from ops.testing.final_e2e_supervisor import require_subreaper
 
-from infra.posture_observation import activity, process_group
+from infra.posture_child_lifetime import (
+    exited,
+    owned_spawn,
+    waitable_children,
+)
+from infra.posture_observation import ProcessWindow, activity
 from infra.test_db_posture_url import MAKE_BINARY, MAKE_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
@@ -48,17 +49,6 @@ def _watch(operation: Callable[[], None]) -> Future[None]:
     return result
 
 
-def _observe_exit(pid: int, until: float) -> bool:
-    """Poll the kernel handle for exit without consuming the child wait status."""
-    fd = os.pidfd_open(pid)
-    try:
-        poller = select.poll()
-        poller.register(fd, select.POLLIN)
-        return bool(poller.poll(max(0, math.ceil((until - time.monotonic()) * 1000))))
-    finally:
-        os.close(fd)
-
-
 def _stages(pipe: IO[bytes], records: list[dict[str, object]]) -> None:
     for line in pipe:
         value = line.decode("ascii", errors="replace").strip()
@@ -70,9 +60,25 @@ def _stages(pipe: IO[bytes], records: list[dict[str, object]]) -> None:
             records.append({"stage": m[1], "ordinal": int(m[2]), "ns": int(m[3])})
 
 
+def _stage_reader(pipe: IO[bytes], marks: list[dict[str, object]]) -> Future[None]:
+    # The reader owns a separate fd until EOF; closing Popen's streams after
+    # reaping cannot discard the verifier's final stage or race a recycled fd.
+    source = os.fdopen(os.dup(pipe.fileno()), "rb")
+
+    def read() -> None:
+        with source:
+            _stages(source, marks)
+
+    try:
+        return _watch(read)
+    except BaseException:
+        source.close()
+        raise
+
+
 def _sample(
     monitor: psycopg.Connection,
-    pgid: int,
+    window: ProcessWindow,
     stop: Event,
     records: list[dict[str, object]],
 ) -> None:
@@ -80,7 +86,7 @@ def _sample(
     while not stop.is_set():
         sample: dict[str, object] = {
             "ns": time.monotonic_ns(),
-            "processes": process_group(pgid),
+            "processes": window.snapshot(),
         }
         try:
             sample["backends"] = activity(monitor)
@@ -89,33 +95,6 @@ def _sample(
             sample.update(backends=[], observer_error=type(exc).__name__)
         records.append(sample)
         stop.wait(0.05)
-
-
-def _reap_group(proc: subprocess.Popen[bytes]) -> None:
-    # This dedicated worker is the sole waiter. A live or zombie direct child
-    # pins the numeric PGID. Never signal even with signal 0 after releasing it.
-    if proc.returncode is not None:
-        return
-    until = time.monotonic() + _CLEANUP_SECONDS
-    os.killpg(proc.pid, signal.SIGKILL)
-    proc.wait(timeout=max(0, until - time.monotonic()))
-    # Only this subprocess's children can be waited here. Every descendant
-    # was in the killed private session; adopted zombies also have to be reaped.
-    children = Path("/proc/thread-self/children")
-    try:
-        while True:
-            pid, _ = os.waitpid(-1, os.WNOHANG)
-            if pid:
-                continue
-            if time.monotonic() >= until:
-                break
-            adopted = children.read_text().split()
-            if adopted and not _observe_exit(int(adopted[0]), until):
-                break
-    except ChildProcessError:
-        return
-    message = "posture child cleanup exceeded its separate deadline"
-    raise TimeoutError(message)
 
 
 def _probe(db: psycopg.Connection, deadline: float) -> dict[str, object]:
@@ -129,33 +108,27 @@ def _probe(db: psycopg.Connection, deadline: float) -> dict[str, object]:
     at_deadline: list[dict[str, object]] = []
     start = time.monotonic_ns()
     marks.append({"stage": "make-launch", "ns": start, "ordinal": 0})
-    with subprocess.Popen(
-        ("/usr/bin/make", "db-posture", "DOCKER=true"),
-        cwd=Path(__file__).resolve().parents[2],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    ) as proc:
+    until = start / 1e9 + deadline
+    with owned_spawn("make", until) as (proc, fd):
+        window = ProcessWindow(fd)
         pipe = proc.stderr
         assert pipe is not None
         try:
-            reader = _watch(lambda: _stages(pipe, marks))
-            observer = _watch(lambda: _sample(db, proc.pid, stop, samples))
-            exited = _observe_exit(proc.pid, start / 1e9 + deadline)
+            reader = _stage_reader(pipe, marks)
+            observer = _watch(lambda: _sample(db, window, stop, samples))
+            finished = exited(fd, until)
             end = time.monotonic_ns()
-            timed_out = not exited or (end - start) / 1e9 >= deadline
+            timed_out = not finished or (end - start) / 1e9 >= deadline
         finally:
             stop.set()
             try:
                 if timed_out:
-                    at_deadline = process_group(proc.pid)
+                    at_deadline = window.snapshot()
             finally:
-                # Never wait on an observer while the owned group needs killing.
-                _reap_group(proc)
-        until = time.monotonic() + _CLEANUP_SECONDS
-        for result in (reader, observer):
-            result.result(timeout=max(0, until - time.monotonic()))
+                window.close()  # No numeric /proc read can cross ownership release.
+    until = time.monotonic() + _CLEANUP_SECONDS
+    for result in (reader, observer):
+        result.result(timeout=max(0, until - time.monotonic()))
     return {
         "exit": proc.returncode,
         "timed_out": timed_out,
@@ -176,14 +149,16 @@ def _probe(db: psycopg.Connection, deadline: float) -> dict[str, object]:
 
 
 def main() -> None:
-    require_subreaper()
-    with psycopg.connect(
-        os.environ["TEST_SUPERUSER_DATABASE_URL"],
-        autocommit=True,
-        connect_timeout=2,
-        options="-c search_path=pg_catalog -c statement_timeout=500",
-    ) as monitor:
-        result = _probe(monitor, MAKE_TIMEOUT_SECONDS)
+    with waitable_children() as inherited:
+        require_subreaper()
+        with psycopg.connect(
+            os.environ["TEST_SUPERUSER_DATABASE_URL"],
+            autocommit=True,
+            connect_timeout=2,
+            options="-c search_path=pg_catalog -c statement_timeout=500",
+        ) as monitor:
+            result = _probe(monitor, MAKE_TIMEOUT_SECONDS)
+    result["child_wait"] = {"inherited": inherited, "restored": True}
     json.dump(result, sys.stdout, separators=(",", ":"))
 
 

@@ -16,7 +16,7 @@ from typing import cast
 import pytest
 from ops.testing.final_e2e_supervisor import require_subreaper
 
-from infra import posture_trace_worker as worker
+from infra import posture_child_lifetime as lifetime
 
 
 def test_recycled_group_never_receives_an_owned_cleanup_signal(
@@ -53,13 +53,13 @@ def test_recycled_group_never_receives_an_owned_cleanup_signal(
         assert released.wait(timeout=3)
         reused.set()
 
-    monkeypatch.setattr(worker, "os", Kernel)
+    monkeypatch.setattr(lifetime, "os", Kernel)
     leader = Leader()
     with ThreadPoolExecutor(max_workers=1) as pool:
         allocation = pool.submit(allocate_foreign)
         leader.wait()
         assert reused.wait(timeout=3)
-        worker._reap_group(cast("subprocess.Popen[bytes]", leader))
+        lifetime.reap_tree(cast("subprocess.Popen[bytes]", leader))
         allocation.result(timeout=3)
     assert foreign_signals == []
 
@@ -68,30 +68,40 @@ def _real_orphan() -> None:
     require_subreaper()
     # Only the nested, dedicated worker adopts children. Write readiness once;
     # these two inert processes remain in its private session.
-    with subprocess.Popen(
-        (sys.executable, "-m", "infra.test_posture_group_identity", "owned-fixture"),
-        stdout=subprocess.PIPE,
-        start_new_session=True,
-    ) as leader:
+    with (
+        lifetime.waitable_children(),
+        subprocess.Popen(
+            (
+                sys.executable,
+                "-m",
+                "infra.test_posture_group_identity",
+                "owned-fixture",
+            ),
+            stdout=subprocess.PIPE,
+            start_new_session=True,
+        ) as leader,
+    ):
         assert leader.stdout is not None
-        try:
-            descendant = int(leader.stdout.readline())
-            assert worker._observe_exit(leader.pid, time.monotonic() + 5)
-            observed = os.waitid(os.P_PID, leader.pid, os.WEXITED | os.WNOWAIT)
-            assert observed is not None
-            assert observed.si_status == 0
-            assert leader.returncode is None
-            fd = os.pidfd_open(descendant)
+        with lifetime.direct_child(leader.pid) as leader_fd:
             try:
-                waiter = select.poll()
-                waiter.register(fd, select.POLLIN)
-                assert not waiter.poll(0)
-                worker._reap_group(leader)
-                assert waiter.poll(0)
+                descendant = int(leader.stdout.readline())
+                assert lifetime.exited(leader_fd, time.monotonic() + 5)
+                observed = os.waitid(os.P_PID, leader.pid, os.WEXITED | os.WNOWAIT)
+                assert observed is not None
+                assert observed.si_status == 0
+                assert leader.returncode is None
+                fd = os.pidfd_open(descendant)
+                try:
+                    waiter = select.poll()
+                    waiter.register(fd, select.POLLIN)
+                    assert not waiter.poll(0)
+                    lifetime.reap_tree(leader, leader_fd)
+                    assert waiter.poll(0)
+                finally:
+                    os.close(fd)
             finally:
-                os.close(fd)
-        finally:
-            worker._reap_group(leader)
+                if leader.returncode is None:
+                    lifetime.reap_tree(leader, leader_fd)
         assert leader.returncode == 0
         with pytest.raises(ChildProcessError):
             os.waitpid(-1, os.WNOHANG)

@@ -392,13 +392,20 @@ database trust boundary, not as proof against a superuser.
   15-second deadline on the same cluster. Trace only fixed stages, monotonic
   durations, backend counts/state/waits/transaction age/blocking, and process
   scheduling counters; never SQL, connection strings or input values.
-  On deadline expiry, take a final observation and kill/reap the probe's
-  private process group. Observe Make's exit without reaping the leader;
-  signal only while its owned identity is pinned, then reap the leader and
-  adopted children. No signal or liveness probe uses the numeric group after
-  the leader is reaped. Observer teardown has a separate bounded budget, not
-  an extension of the Make deadline. The trace locates observed waits; it does not infer
-  a historical lock or load cause from an aggregate run time.
+  Before spawning, save the inherited `SIGCHLD` disposition, install `SIG_DFL`
+  (including when the old setting appears to be default), and restore it on
+  exit. Each launcher passes its own pidfd through a private socket and waits
+  for acknowledgement before exec. An interrupted launch is recovered through
+  that socket or aborted by EOF, never by guessing its PID.
+  On timeout or error, signal only kernel handles. The dedicated subreaper
+  reaps Make and its adopted children through authenticated pidfds. The outer
+  watchdog uses a pidfd bound to the worker's private group; if the kernel
+  lacks group-scoped pidfd signalling, fail before admitting the workload.
+  No signal, including signal 0, uses a numeric PID or PGID. Close the procfs
+  sampling window before releasing ownership; database observations do not
+  hold that window open. Observer teardown has a separate bounded budget,
+  not an extension of the 15-second Make deadline. The trace locates observed
+  waits, not the historical cause of an unmeasured stall.
 - Give the inspector `CONNECT` on restricted databases; do not grant runtime
   logins extra access for the check. On a stock PG16 cluster even a superuser
   cannot connect to `template0` while `datallowconn` is false. With an explicit

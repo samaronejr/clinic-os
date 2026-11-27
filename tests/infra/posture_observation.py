@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -40,38 +42,82 @@ def checkpoint(db: psycopg.Connection, stage: str) -> dict[str, object]:
     return {"ns": time.monotonic_ns(), "stage": stage, "backends": activity(db)}
 
 
-def process_group(root: int) -> list[dict[str, object]]:
-    """Read only process class, scheduling state and counters, never argv or SQL."""
+def _pid_of(fd: int) -> int:
+    for line in Path(f"/proc/self/fdinfo/{fd}").read_text().splitlines():
+        if line.startswith("Pid:"):
+            return int(line.partition(":")[2])
+    message = "process observation requires a pidfd"
+    raise ValueError(message)
+
+
+def process_group(fd: int) -> list[dict[str, object]]:
+    """Anchor the owned tree to a pidfd and pin each proc directory while reading."""
     rows: list[dict[str, object]] = []
-    pending = [root]
+    root = _pid_of(fd)
+    if root <= 0:
+        return rows
+    pending = [(root, os.getpid())]
     seen: set[int] = set()
     while pending:
-        pid = pending.pop()
+        pid, parent = pending.pop()
         if pid in seen:
             continue
         seen.add(pid)
-        proc = Path("/proc") / str(pid)
         try:
-            fields = (proc / "stat").read_text().rsplit(")", 1)[1].split()
-            if int(fields[2]) != root:
-                continue
-            name = (proc / "comm").read_text().strip()
-            rows.append(
-                {
-                    "process": name
-                    if name
-                    in {"make", "sh", "bash", "uv", "python", "python3", "python3.12"}
-                    else "other",
-                    "state": fields[0],
-                    "wchan": (proc / "wchan").read_text().strip(),
-                    "major_faults": int(fields[9]),
-                    "cpu_ticks": int(fields[11]) + int(fields[12]),
-                }
-            )
-            pending.extend(
-                int(x)
-                for x in (proc / "task" / str(pid) / "children").read_text().split()
-            )
+            directory = os.open(f"/proc/{pid}", os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                proc = Path(f"/proc/self/fd/{directory}")
+                fields = (proc / "stat").read_text().rsplit(")", 1)[1].split()
+                if int(fields[1]) != parent or int(fields[3]) != os.getsid(0):
+                    continue
+                if pid == root and _pid_of(fd) != root:
+                    return []
+                name = (proc / "comm").read_text().strip()
+                rows.append(
+                    {
+                        "process": name
+                        if name
+                        in {
+                            "make",
+                            "sh",
+                            "bash",
+                            "uv",
+                            "python",
+                            "python3",
+                            "python3.12",
+                        }
+                        else "other",
+                        "state": fields[0],
+                        "wchan": (proc / "wchan").read_text().strip(),
+                        "major_faults": int(fields[9]),
+                        "cpu_ticks": int(fields[11]) + int(fields[12]),
+                    }
+                )
+                pending.extend(
+                    (int(x), pid)
+                    for x in (proc / "task" / str(pid) / "children").read_text().split()
+                )
+            finally:
+                os.close(directory)
         except (FileNotFoundError, ProcessLookupError):
             continue
     return rows
+
+
+class ProcessWindow:
+    """Finish in-flight procfs reads and close admission before ownership release."""
+
+    def __init__(self, fd: int) -> None:
+        self._fd: int | None = fd
+        self._lock = Lock()
+
+    def snapshot(self) -> list[dict[str, object]]:
+        # No database calls or sample cadence waits inside this critical section.
+        with self._lock:
+            if self._fd is None:
+                return []
+            return process_group(self._fd)
+
+    def close(self) -> None:
+        with self._lock:
+            self._fd = None
