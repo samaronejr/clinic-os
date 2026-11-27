@@ -1,5 +1,7 @@
 """Create and use the rehearsal's private run directory only through its descriptor."""
 
+import hashlib
+import json
 import os
 import posixpath
 import re
@@ -8,6 +10,7 @@ import shutil
 import stat
 import sys
 import tarfile
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import IO
 
@@ -116,50 +119,48 @@ def require_empty(directory: str, expected: str) -> None:
         os.close(held)
 
 
-def _link_allowed(
-    relative: str, target: str, recorded: dict[str, str], mount: str
-) -> bool:
-    """Accept a link the run recorded, or one a package manager makes in its own tree.
+@dataclass(frozen=True)
+class _Census:
+    """What a census of the run tree compares each entry against."""
 
-    uv links its cache entries to absolute paths inside the cache and its
-    interpreters to the installed Python; both are confined to those shapes.
+    root_device: int
+    root_path: str
+    children: dict[str, str]
+    recorded: dict[str, str]
+    allowed: frozenset[tuple[int, int]]
+    # (dev, ino) -> [st_nlink, names seen in the tree, one path for the report]
+    names: dict[tuple[int, int], list[object]] = field(default_factory=dict)
+
+
+def _link_resolves_inside(directory: int, name: str, census: _Census) -> bool:
+    """Judge a link by what it resolves to, never by what its target is named.
+
+    It may resolve to an inode recorded when the run started, or to a path
+    under the run directory on the run's own device. A link into ``/proc`` or
+    ``/dev`` resolves to the wrapper's own descriptors and is refused, even
+    when the file behind it happens to share the run's device.
     """
-    if recorded.get(relative) == target:
-        return True
-    parts = PurePosixPath(relative).parts
-    venv = ".venv" in parts[:-1]
-    if not venv and parts[0] != "uv-cache":
+    try:
+        found = os.stat(name, dir_fd=directory)
+        resolved = os.path.realpath(f"/proc/self/fd/{directory}/{name}")
+    except OSError:
         return False
-    scope = "/".join(parts[: parts.index(".venv") + 1]) if venv else "uv-cache"
-    if target.startswith("/"):
-        inside = posixpath.normpath(target)
-        own = f"{mount}/{scope}"
-        return (bool(mount) and (inside == own or inside.startswith(own + "/"))) or (
-            re.fullmatch(r"python[0-9.]*", posixpath.basename(target)) is not None
-        )
-    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(relative), target))
-    return resolved == scope or resolved.startswith(scope + "/")
-
-
-def _may_share_links(relative: str) -> bool:
-    """Package-manager hard links between its cache and the venv it fills."""
-    parts = PurePosixPath(relative).parts
-    return parts[0] == "uv-cache" or ".venv" in parts
+    if (found.st_dev, found.st_ino) in census.allowed:
+        return True
+    inside = resolved == census.root_path or resolved.startswith(f"{census.root_path}/")
+    return found.st_dev == census.root_device and inside
 
 
 def _census_entry(
-    directory: int,
-    prefix: str,
-    name: str,
-    expected: tuple[int, dict[str, str], dict[str, str], str],
+    directory: int, prefix: str, name: str, census: _Census
 ) -> tuple[int, str] | None:
     """Judge one entry; return the directory to descend into, if any."""
-    root_device, children, recorded, mount = expected
     relative = prefix + name
     found = os.lstat(name, dir_fd=directory)
-    if found.st_dev != root_device:
+    if found.st_dev != census.root_device:
         message = f"private_tree_foreign_mount: {relative}"
         raise RuntimeError(message)
+    children = census.children
     if (
         prefix == ""
         and name in children
@@ -173,14 +174,18 @@ def _census_entry(
     if stat.S_ISDIR(found.st_mode):
         return os.open(name, DIRECTORY_FLAGS, dir_fd=directory), relative + "/"
     if stat.S_ISLNK(found.st_mode):
-        target = os.readlink(name, dir_fd=directory)
-        allowed = _link_allowed(relative, target, recorded, mount)
+        # Judged by what it resolves to, wherever it sits and whatever it is called.
+        allowed_link = census.recorded.get(relative) == os.readlink(
+            name, dir_fd=directory
+        ) or _link_resolves_inside(directory, name, census)
     else:
-        # A second name for an inode is how a foreign file would enter the tree.
-        allowed = stat.S_ISREG(found.st_mode) and (
-            found.st_nlink == 1 or _may_share_links(relative)
-        )
-    if not allowed:
+        allowed_link = stat.S_ISREG(found.st_mode)
+        if allowed_link:
+            seen = census.names.setdefault(
+                (found.st_dev, found.st_ino), [found.st_nlink, 0, relative]
+            )
+            seen[1] = int(seen[1]) + 1  # type: ignore[call-overload]
+    if not allowed_link:
         message = f"private_tree_foreign_entry: {relative}"
         raise RuntimeError(message)
     return None
@@ -191,15 +196,23 @@ def check_tree(
     expected: str,
     children: dict[str, str],
     links: dict[str, str] | None = None,
-    mount: str = "",
+    allowed: frozenset[tuple[int, int]] = frozenset(),
 ) -> None:
     """Census the whole run tree against what the run created.
 
     Refuses a missing or replaced created child, any link the run did not
-    record, any entry on another device, and any non-regular file.
+    record that does not resolve to the run's own device or to an inode
+    recorded at the start, any entry on another device, and any entry that is
+    not a file, a directory or such a link.
     """
     _require_directory(root, expected)
-    judged = (os.fstat(root).st_dev, children, links or {}, mount)
+    judged = _Census(
+        os.fstat(root).st_dev,
+        str(Path(f"/proc/self/fd/{root}").readlink()),
+        children,
+        links or {},
+        allowed,
+    )
     pending = [(os.dup(root), "")]
     top_level: set[str] = set()
     while pending:
@@ -217,6 +230,91 @@ def check_tree(
     if not set(children) <= top_level:
         message = "private_tree_missing_entry"
         raise RuntimeError(message)
+    # Every name an inode has must be inside this tree: an inode with a name
+    # outside it is a foreign file that was linked in, wherever it sits.
+    for nlink, seen, relative in judged.names.values():
+        if nlink != seen:
+            message = f"private_tree_foreign_entry: {relative}"
+            raise RuntimeError(message)
+
+
+def _digest(directory: int, name: str) -> str:
+    """Hash a regular file read through its directory descriptor, never by path."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+    held = os.open(name, flags, dir_fd=directory)
+    try:
+        if not stat.S_ISREG(os.fstat(held).st_mode):
+            message = "private_tree_foreign_entry"
+            raise RuntimeError(message)
+        digest = hashlib.sha256()
+        while block := os.read(held, 1 << 20):
+            digest.update(block)
+        return digest.hexdigest()
+    finally:
+        os.close(held)
+
+
+def snapshot(root: int, expected: str) -> dict[str, list[object]]:
+    """Record every object in the run tree: identity, link count and content.
+
+    The record is taken from outside every child, after the census accepted the
+    tree, so a later comparison shows exactly what changed since this stage.
+    """
+    _require_directory(root, expected)
+    entries: dict[str, list[object]] = {}
+    pending = [(os.dup(root), "")]
+    while pending:
+        directory, prefix = pending.pop()
+        try:
+            with os.scandir(directory) as scanned:
+                for entry in scanned:
+                    found = os.lstat(entry.name, dir_fd=directory)
+                    relative = prefix + entry.name
+                    kind, detail = "d", ""
+                    if stat.S_ISREG(found.st_mode):
+                        kind, detail = "f", _digest(directory, entry.name)
+                    elif stat.S_ISLNK(found.st_mode):
+                        kind, detail = "l", os.readlink(entry.name, dir_fd=directory)
+                    elif stat.S_ISDIR(found.st_mode):
+                        pending.append(
+                            (
+                                os.open(entry.name, DIRECTORY_FLAGS, dir_fd=directory),
+                                relative + "/",
+                            )
+                        )
+                    else:
+                        message = f"private_tree_foreign_entry: {relative}"
+                        raise RuntimeError(message)
+                    entries[relative] = [
+                        kind,
+                        found.st_dev,
+                        found.st_ino,
+                        found.st_nlink,
+                        detail,
+                    ]
+        finally:
+            os.close(directory)
+    return entries
+
+
+def unchanged_since(
+    recorded: dict[str, list[object]],
+    current: dict[str, list[object]],
+    new_names: frozenset[str] = frozenset(),
+) -> None:
+    """Refuse an object missing, new, replaced or rewritten since the record."""
+    for relative, found in current.items():
+        if relative not in recorded:
+            if relative not in new_names:
+                message = f"private_tree_changed: new {relative}"
+                raise RuntimeError(message)
+        elif recorded[relative] != found:
+            message = f"private_tree_changed: {relative}"
+            raise RuntimeError(message)
+    for relative in recorded:
+        if relative not in current:
+            message = f"private_tree_changed: missing {relative}"
+            raise RuntimeError(message)
 
 
 class _Extractor:
@@ -350,12 +448,94 @@ def extract_owned(
             os.close(top)
 
 
+def interpreter_prefixes(path: str) -> list[str]:
+    """Each directory an interpreter's link chain passes through, to bind them.
+
+    uv names a minor-version alias (``cpython-3.12-...``) that links to the
+    patch-version install, so both prefixes are needed inside the sandbox.
+    """
+    prefixes: list[str] = []
+    current = Path(path)
+    for _ in range(16):
+        if not current.is_symlink():
+            break
+        target = current.readlink()
+        current = target if target.is_absolute() else current.parent / target
+        prefixes.append(str(current.parent.parent))
+    prefixes.append(str(current.resolve().parent.parent))
+    return list(dict.fromkeys(prefixes))
+
+
+def resolved_inode(path: str) -> str:
+    """Return the ``dev:ino`` a path finally resolves to."""
+    found = Path(path).stat()
+    return f"{found.st_dev}:{found.st_ino}"
+
+
 def write_replacing(path: Path, text: str) -> None:
     """Publish a rewritten receipt without following or truncating a foreign name."""
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     with temporary.open("x", encoding="utf-8") as output:
         output.write(text)
     temporary.replace(path)
+
+
+def _check_command(arguments: list[str]) -> None:
+    """Census the run tree: created children, recorded links, allowed inodes."""
+    extra = ("link:", "inode:")
+    recorded = [a[5:].split("\t", 1) for a in arguments[3:] if a.startswith("link:")]
+    allowed = frozenset(
+        (int(a[6:].split(":")[0]), int(a[6:].split(":")[1]))
+        for a in arguments[3:]
+        if a.startswith("inode:")
+    )
+    check_tree(
+        int(arguments[1]),
+        arguments[2],
+        dict(a.split("=", 1) for a in arguments[3:] if not a.startswith(extra)),
+        dict(recorded),
+        allowed,
+    )
+
+
+def _interpreter_command(arguments: list[str]) -> None:
+    """Print the prefixes an interpreter needs and the inode it resolves to."""
+    for prefix in interpreter_prefixes(arguments[1]):
+        sys.stdout.write(f"prefix {prefix}\n")
+    sys.stdout.write(f"inode {resolved_inode(arguments[1])}\n")
+
+
+def _inode_command(arguments: list[str]) -> None:
+    sys.stdout.write(f"{resolved_inode(arguments[1])}\n")
+
+
+def _snapshot_command(arguments: list[str]) -> None:
+    """Record the accepted tree: custody.py snapshot RUN_FD IDENTITY MANIFEST."""
+    recorded = snapshot(int(arguments[1]), arguments[2])
+    target = Path(arguments[3])
+    # Exclusive create, then an atomic rename: a link planted at either name is
+    # replaced or refused, never written through.
+    pending = target.with_name(target.name + f".{os.getpid()}.new")
+    with pending.open("x", encoding="utf-8") as output:
+        output.write(json.dumps(recorded))
+    pending.replace(target)
+
+
+def _unchanged_command(arguments: list[str]) -> None:
+    """Compare the tree to a record, allowing the named new entries."""
+    recorded = json.loads(Path(arguments[3]).read_text(encoding="utf-8"))
+    unchanged_since(
+        recorded, snapshot(int(arguments[1]), arguments[2]), frozenset(arguments[4:])
+    )
+
+
+TOOLS = {
+    "check": _check_command,
+    "snapshot": _snapshot_command,
+    "unchanged": _unchanged_command,
+    "interpreter": _interpreter_command,
+    "inode": _inode_command,
+}
 
 
 def _main(arguments: list[str]) -> None:
@@ -383,19 +563,8 @@ def _main(arguments: list[str]) -> None:
         symlink_owned(arguments[1], arguments[2], arguments[3], arguments[4])
     elif command == "empty":
         require_empty(arguments[1], arguments[2])
-    elif command == "check":
-        extra = ("link:", "mount:")
-        recorded = [
-            a[5:].split("\t", 1) for a in arguments[3:] if a.startswith("link:")
-        ]
-        mounts = [a[6:] for a in arguments[3:] if a.startswith("mount:")]
-        check_tree(
-            int(arguments[1]),
-            arguments[2],
-            dict(a.split("=", 1) for a in arguments[3:] if not a.startswith(extra)),
-            dict(recorded),
-            mounts[0] if mounts else "",
-        )
+    elif command in TOOLS:
+        TOOLS[command](arguments)
     else:
         create(command)
 

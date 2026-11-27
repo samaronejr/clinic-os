@@ -46,7 +46,7 @@ from apps.core.integration import (
     enqueue_operation,
     execute_operation,
 )
-from apps.tenancy.db import tenant_context
+from apps.tenancy.db import clear_connection_tenant_gucs, tenant_context
 from django.conf import settings
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.test import override_settings
@@ -819,6 +819,9 @@ def verify_inbox(markers: dict[str, object]) -> list[str]:
     if not isinstance(inbox, dict):
         return []
     world = _World(markers, inbox)
+    # The harness holds staff GUCs at session scope; the inbound resolver
+    # refuses any session that carries a staff actor, as production never does.
+    clear_connection_tenant_gucs()
     failures: list[str] = []
     cases = inbox["cases"]
     if set(cases) != set(_CASES):

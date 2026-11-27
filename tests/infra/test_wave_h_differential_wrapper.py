@@ -5,6 +5,8 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,8 +45,16 @@ def _wrapper_env(
     commit = subprocess.check_output(  # noqa: S603 - local fixed Git query
         [git, "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
+    # The real tools a shim execs by absolute path must be reachable inside the
+    # sandbox, where only named paths exist.
+    real_tools = os.pathsep.join(
+        str(Path(found).resolve().parent)
+        for found in (shutil.which("uv"), shutil.which("git"))
+        if found
+    )
     return {
         **env,
+        "UPGRADE_SANDBOX_READ_ONLY": real_tools,
         "GITHUB_WORKSPACE": str(ROOT),
         "RUNNER_TEMP": str(tmp_path),
         "UPGRADE_WAVE_H_DIFFERENTIAL": "1",
@@ -539,11 +549,18 @@ def test_concurrent_wrapper_with_same_ci_identity_cannot_certify(
     bin_dir = _tools(tmp_path, missing="git")
     git = shutil.which("git")
     assert git is not None
+    # Children have no stdin, so the first wrapper is held at staging by a FIFO.
+    # It lives in the tools directory because the sandbox binds only that.
+    release = bin_dir / "release"
+    os.mkfifo(release)
+    # The child opens it read-only (Landlock allows nothing more outside the run);
+    # holding a write end here keeps that open from blocking, whatever the order.
+    release_fd = os.open(release, os.O_RDWR)
     shim = bin_dir / "git"
     shim.write_text(
         "#!/bin/bash\n"
         'if [[ "$3" == archive || "$1" == clone || "$3:$4" == worktree:add ]]; then\n'
-        "    echo staging >&2; read -r _; exit 1\nfi\n"
+        f'    echo staging >&2; read -r -t 300 _ < "{release}"; exit 1\nfi\n'
         f'exec {git} "$@"\n',
         encoding="utf-8",
     )
@@ -591,7 +608,8 @@ def test_concurrent_wrapper_with_same_ci_identity_cannot_certify(
             assert first_nonce == [json.loads(before)["run_nonce"]]
             assert not _nonce(second.stdout)
         finally:
-            first.communicate(input="finish\n", timeout=15)
+            os.write(release_fd, b"finish\n")
+            first.communicate(timeout=15)
 
 
 def test_wrapper_records_setup_failure_without_python(tmp_path: Path) -> None:
@@ -684,11 +702,14 @@ def _foreign(tmp_path: Path) -> tuple[Path, Path, os.stat_result]:
     directory.mkdir()
     marker = tmp_path / "foreign-file"
     marker.write_bytes(b"foreign\n")
+    # A foreign file named for the interpreter: a name must never earn trust.
+    (tmp_path / "python3").write_bytes(b"foreign\n")
     return directory, marker, marker.stat()
 
 
 def _assert_untouched(directory: Path, marker: Path, before: os.stat_result) -> None:
     assert list(directory.iterdir()) == []
+    assert (directory.parent / "python3").read_bytes() == b"foreign\n"
     assert (marker.stat().st_ino, marker.read_bytes()) == (
         before.st_ino,
         b"foreign\n",
@@ -753,27 +774,66 @@ def test_environment_link_never_follows_a_planted_name(
     _assert_untouched(directory, marker, before)
 
 
-def _plant_commands(links: tuple[tuple[str, str], ...]) -> str:
+@dataclass(frozen=True)
+class ShimOptions:
+    """How the stand-in tool plants: where it execs on, and what the links name."""
+
+    passthrough: bool = False
+    stdio: bool = False
+    python_named: bool = False
+    writer: bool = False  # plant a link to stdout and leave the write to the real tool
+
+
+def _plant_commands(
+    links: tuple[tuple[str, str], ...], options: ShimOptions | None = None
+) -> str:
     """Replace each entry with a link the way a follower's attacker would.
 
     The real entry (uv's lock file, its interpreter directory) is moved aside
     first, so the link is always created; a name that cannot be planted fails
-    loudly instead of being mistaken for an escape.
+    loudly instead of being mistaken for an escape. In ``stdio`` mode the links
+    name the wrapper's own descriptors and are opened for truncation; in
+    ``python_named`` mode a file link points at a foreign file called python3.
     """
+    options = options or ShimOptions()
     plants = ""
-    for base, name in links:
+    for index, (base, name) in enumerate(links):
         variable, label = PLANT_BASES[base]
-        directory = name.endswith(DIRECTORY_PLANTS)
-        target = "$FOREIGN_DIR" if directory else "$FOREIGN_FILE"
+        directory = name.endswith(DIRECTORY_PLANTS) and not (
+            options.python_named and name == "interpreter-v4"
+        )
+        if options.writer:
+            target = "/proc/self/fd/1"
+        elif options.stdio:
+            target = (
+                f"/proc/self/fd/{index % 3}"
+                if index % 2 == 0
+                else f"/dev/fd/{index % 3}"
+            )
+        elif options.python_named:
+            target = "$FOREIGN_DIR" if directory else "$FOREIGN_PYTHON"
+        else:
+            target = "$FOREIGN_DIR" if directory else "$FOREIGN_FILE"
         written = f"{variable}/{name}/pwned" if directory else f"{variable}/{name}"
+        if options.writer:
+            attempt = f"        echo PLANTED {label}{name} >&2\n"
+        elif options.stdio:
+            attempt = (
+                f'        {{ echo PWN > "{variable}/{name}"; }} 2>/dev/null\n'
+                f"        echo STDIO_ATTEMPTED {label}{name} >&2\n"
+            )
+        else:
+            attempt = (
+                f'        if {{ echo PWN >> "{written}"; }} 2>/dev/null; then\n'
+                f"            echo WRITE_ESCAPED {label}{name} >&2\n"
+                "        else\n"
+                f"            echo WRITE_BLOCKED {label}{name} >&2\n"
+                "        fi\n"
+            )
         plants += (
             f'    mv -f -- "{variable}/{name}" "{variable}/{name}.moved" 2>/dev/null\n'
             f'    if ln -s -- "{target}" "{variable}/{name}" 2>/dev/null; then\n'
-            f'        if {{ echo PWN >> "{written}"; }} 2>/dev/null; then\n'
-            f"            echo WRITE_ESCAPED {label}{name} >&2\n"
-            "        else\n"
-            f"            echo WRITE_BLOCKED {label}{name} >&2\n"
-            "        fi\n"
+            f"{attempt}"
             "    else\n"
             f"        echo PLANT_FAILED {label}{name} >&2\n"
             "    fi\n"
@@ -786,8 +846,7 @@ def _mid_run_shim(
     tool: str,
     plant: tuple[str, tuple[tuple[str, str], ...]],
     scratch: Path,
-    *,
-    passthrough: bool,
+    options: ShimOptions,
 ) -> None:
     """Plant links when the trigger holds, then write through them like a follower."""
     trigger, links = plant
@@ -802,9 +861,10 @@ def _mid_run_shim(
         'CACHE="$UV_CACHE_DIR"\n'
         f'FOREIGN_DIR="{scratch / "foreign-dir"}"\n'
         f'FOREIGN_FILE="{scratch / "foreign-file"}"\n'
+        f'FOREIGN_PYTHON="{scratch / "python3"}"\n'
         f"if [[ {trigger} ]]; then\n"
-        f"{_plant_commands(links)}"
-        "fi\n" + (f'exec {real} "$@"\n' if passthrough else "exit 0\n"),
+        f"{_plant_commands(links, options)}"
+        "fi\n" + (f'exec {real} "$@"\n' if options.passthrough else "exit 0\n"),
         encoding="utf-8",
     )
     shim.chmod(0o700)
@@ -857,10 +917,13 @@ MID_RUN_PLANTS = {
     ),
     "native_writers": ("uv", NATIVE_WRITERS, NATIVE_PLANTS),
 }
+# One link and nothing else, named for what the census used to trust.
+PYTHON_PLANT = ("uv", '"$1" == sync', (("cache", "interpreter-v4"),))
+UNSHARE = shutil.which("unshare") or "/usr/bin/unshare"
 
 
 def _database_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    # docker is a no-op in these runs, so the connection strings only need to parse.
+    # docker is a no-op here, so the connection strings only need to parse.
     for key in (
         "MIGRATION_DATABASE_URL",
         "APP_DATABASE_URL",
@@ -877,14 +940,16 @@ def _database_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(key, value)
 
 
-@pytest.mark.parametrize("stage", MID_RUN_PLANTS)
-def test_links_planted_mid_run_never_reach_a_foreign_inode(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
-) -> None:
+def _stage_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    plant: tuple[str, str, tuple[tuple[str, str], ...]],
+    options: ShimOptions | None = None,
+) -> Path:
+    """Tools whose stand-in for ``plant``'s tool plants links at its trigger."""
     monkeypatch.delenv("UPGRADE_REUSE_ENVIRONMENT", raising=False)
     _database_environment(monkeypatch)
-    tool, trigger, links = MID_RUN_PLANTS[stage]
-    directory, marker, before = _foreign(tmp_path)
+    tool, trigger, links = plant
     bin_dir = _tools(tmp_path)
     (bin_dir / "docker").unlink()
     (bin_dir / "docker").symlink_to("/bin/true")
@@ -893,7 +958,24 @@ def test_links_planted_mid_run_never_reach_a_foreign_inode(
         stand_in.unlink()
         stand_in.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
         stand_in.chmod(0o700)
-    _mid_run_shim(bin_dir, tool, (trigger, links), tmp_path, passthrough=tool == "git")
+    chosen = replace(options or ShimOptions(), passthrough=tool == "git")
+    _mid_run_shim(bin_dir, tool, (trigger, links), tmp_path, chosen)
+    return bin_dir
+
+
+def _not_a_pass(tmp_path: Path) -> None:
+    published = tmp_path / "migration-upgrade" / "verdict.json"
+    if published.is_file():
+        verdict = json.loads(published.read_text(encoding="utf-8"))
+        assert verdict["result"] != "PASS"
+
+
+@pytest.mark.parametrize("stage", MID_RUN_PLANTS)
+def test_links_planted_mid_run_never_reach_a_foreign_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    directory, marker, before = _foreign(tmp_path)
+    bin_dir = _stage_tools(tmp_path, monkeypatch, MID_RUN_PLANTS[stage])
 
     result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
 
@@ -901,26 +983,104 @@ def test_links_planted_mid_run_never_reach_a_foreign_inode(
     _assert_untouched(directory, marker, before)
     assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
     assert "PLANT_FAILED" not in result.stdout, result.stdout[-3000:]
-    for base, name in links:
+    for base, name in MID_RUN_PLANTS[stage][2]:
         label = PLANT_BASES[base][1] + name
         assert f"WRITE_BLOCKED {label}" in result.stdout, result.stdout[-3000:]
     assert any(refusal in result.stdout for refusal in REFUSALS), result.stdout[-3000:]
-    published = tmp_path / "migration-upgrade" / "verdict.json"
-    if published.is_file():
-        verdict = json.loads(published.read_text(encoding="utf-8"))
-        assert verdict["result"] != "PASS"
+    _not_a_pass(tmp_path)
+
+
+def test_a_link_named_for_the_interpreter_is_refused_when_it_resolves_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The census judges the inode a link resolves to, not what it is called."""
+    directory, marker, before = _foreign(tmp_path)
+    bin_dir = _stage_tools(
+        tmp_path, monkeypatch, PYTHON_PLANT, ShimOptions(python_named=True)
+    )
+
+    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
+
+    assert result.returncode != 0, result.stdout
+    _assert_untouched(directory, marker, before)
+    assert "PLANT_FAILED" not in result.stdout, result.stdout[-3000:]
+    assert "WRITE_BLOCKED uv-cache/interpreter-v4" in result.stdout, result.stdout[
+        -3000:
+    ]
+    assert any(refusal in result.stdout for refusal in REFUSALS), result.stdout[-3000:]
+    _not_a_pass(tmp_path)
+
+
+def _run_with_host_stdio(
+    tmp_path: Path, bin_dir: Path
+) -> tuple[subprocess.CompletedProcess[bytes], Path, Path, bytes]:
+    """Run the wrapper with host files as stdin and stdout, and return them."""
+    prefix = b"HOST-FILE\n"
+    host_in, host_out = tmp_path / "host-stdin", tmp_path / "host-stdout"
+    host_in.write_bytes(prefix)
+    host_out.write_bytes(prefix)
+    env = _wrapper_env(BASE, tmp_path, bin_dir, uuid4().hex)
+    with host_in.open("rb") as stdin, host_out.open("ab") as stdout:
+        result = subprocess.run(  # noqa: S603 - fixed repository harness
+            [str(ROOT / "ops/testing/migration_upgrade.sh"), BASE],
+            cwd=ROOT,
+            env=env,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stdout,
+            check=False,
+        )
+    return result, host_in, host_out, prefix
+
+
+@pytest.mark.parametrize("stage", MID_RUN_PLANTS)
+def test_stdio_links_planted_mid_run_never_reach_the_wrappers_host_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    bin_dir = _stage_tools(
+        tmp_path, monkeypatch, MID_RUN_PLANTS[stage], ShimOptions(stdio=True)
+    )
+
+    result, host_in, host_out, prefix = _run_with_host_stdio(tmp_path, bin_dir)
+
+    output = host_out.read_bytes()
+    assert result.returncode != 0
+    assert b"STDIO_ATTEMPTED" in output, output[-3000:]
+    # The wrapper's own stdio stayed the wrapper's: nothing reopened it for
+    # truncation, so what it held before the run is still there.
+    assert host_in.read_bytes() == prefix
+    assert output.startswith(prefix)
 
 
 @requires_postgres
-def test_pinned_wave_writers_never_write_through_planted_links(
+def test_the_real_seed_writer_never_reopens_the_wrappers_stdout(
+    tmp_path: Path,
+) -> None:
+    """The pinned seed writer, opening a link to its stdout, spares the host file."""
+    bin_dir = _tools(tmp_path)
+    options = ShimOptions(passthrough=True, writer=True)
+    _mid_run_shim(
+        bin_dir, "uv", (NATIVE_WRITERS, (("native", "seed.json"),)), tmp_path, options
+    )
+
+    result, host_in, host_out, prefix = _run_with_host_stdio(tmp_path, bin_dir)
+
+    output = host_out.read_bytes()
+    assert result.returncode != 0
+    assert b"PLANTED native/seed.json" in output, output[-3000:]
+    assert host_in.read_bytes() == prefix
+    assert output.startswith(prefix), output[:200]
+
+
+@requires_postgres
+def test_a_pinned_wave_writer_run_with_the_real_uv_never_writes_a_planted_link(
     tmp_path: Path,
 ) -> None:
     """The pinned wave-commit writers and the real uv meet the planted links."""
     directory, marker, before = _foreign(tmp_path)
     bin_dir = _tools(tmp_path)
-    _mid_run_shim(
-        bin_dir, "uv", (NATIVE_WRITERS, NATIVE_PLANTS), tmp_path, passthrough=True
-    )
+    options = ShimOptions(passthrough=True)
+    _mid_run_shim(bin_dir, "uv", (NATIVE_WRITERS, NATIVE_PLANTS), tmp_path, options)
 
     result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
 
@@ -928,35 +1088,194 @@ def test_pinned_wave_writers_never_write_through_planted_links(
     _assert_untouched(directory, marker, before)
     assert "WRITE_ESCAPED" not in result.stdout, result.stdout[-3000:]
     assert "PLANT_FAILED" not in result.stdout, result.stdout[-3000:]
+    # The plant must really have run, or the test proves nothing.
+    assert "WRITE_BLOCKED native/seed.json" in result.stdout, result.stdout[-3000:]
     published = tmp_path / "migration-upgrade" / "verdict.json"
     verdict = json.loads(published.read_text(encoding="utf-8"))
     assert verdict["result"] == "FAIL"
 
 
-@requires_postgres
-def test_a_tampered_run_tree_never_produces_a_pass(tmp_path: Path) -> None:
-    """A link made after the last verifier ran still fails the census before PASS."""
-    bin_dir = _tools(tmp_path)
+# The reviewer's plant points, each driven by the real tool that opens it: the
+# census-approved interpreter link under the real makemigrations, the pinned seed
+# writer, and the pinned native verifier. Each link names a late host mount.
+# These tools publish by atomic replace, so the planted link is overwritten and
+# never written through: the run must complete and the host file stay identical.
+ATOMIC_REPLACERS = frozenset({"native_verifier"})
+LATE_MOUNT_CASES = {
+    "interpreter_cache": (
+        '"$*" == *"manage.py makemigrations"*',
+        ("cache", "interpreter-v4", "python3"),
+    ),
+    "seed_writer": (NATIVE_WRITERS, ("native", "seed.json", "target")),
+    "native_verifier": (
+        '"$*" == *wave_h_entry_differential.py*',
+        ("native", "ai-assertions.json", "target"),
+    ),
+}
+
+
+def _late_mount_shim(
+    bin_dir: Path, fifo: Path, mount_dir: Path, case: tuple[str, tuple[str, str, str]]
+) -> None:
+    """Stand in for uv: announce, wait for the mount, plant, run the real uv."""
+    trigger, (base, name, kind) = case
+    variable, label = PLANT_BASES[base]
     real = shutil.which("uv")
     assert real is not None
     shim = bin_dir / "uv"
     shim.unlink()
     shim.write_text(
         "#!/bin/bash\n"
+        'RUN="$UPGRADE_PRIVATE_RUN_DIR"\n'
+        'NATIVE="${UPGRADE_WAVE_H_PROBE_CASES%/*}"\n'
+        'CACHE="$UV_CACHE_DIR"\n'
+        f"if [[ {trigger} ]]; then\n"
+        "    echo MOUNT_NOW >&2\n"
+        f'    read -r -t 300 _ < "{fifo}"\n'
+        f'    mv -f -- "{variable}/{name}" "{variable}/{name}.moved" 2>/dev/null\n'
+        f'    if ln -s -- "{mount_dir}/late/{kind}" "{variable}/{name}"; then\n'
+        f"        echo PLANTED {label}{name} >&2\n"
+        "    else\n"
+        f"        echo PLANT_FAILED {label}{name} >&2\n"
+        "    fi\n"
+        "fi\n"
         f'{real} "$@"\nstatus=$?\n'
         'if [[ "$*" == *"manage.py makemigrations"* ]]; then\n'
-        '    run="$UPGRADE_PRIVATE_RUN_DIR"\n'
-        '    ln -s -- "$run/tmp" "$run/native/leftover"\n'
+        '    ln -s -- "$RUN/tmp" "$RUN/native/leftover"\n'
         "fi\n"
         "exit $status\n",
         encoding="utf-8",
     )
     shim.chmod(0o700)
 
-    result = _run_wrapper(BASE, tmp_path, bin_dir=bin_dir)
 
-    assert result.returncode != 0, result.stdout[-3000:]
-    assert "private_tree_foreign_entry: native/leftover" in result.stdout
-    published = tmp_path / "migration-upgrade" / "verdict.json"
-    verdict = json.loads(published.read_text(encoding="utf-8"))
-    assert verdict["result"] == "FAIL"
+@requires_postgres
+@pytest.mark.parametrize("case", LATE_MOUNT_CASES)
+def test_a_real_tool_never_writes_through_a_link_to_a_mount_made_mid_run(
+    tmp_path: Path, case: str
+) -> None:
+    """A real writer meets a link to a host mount made after its sandbox started.
+
+    The wrapper runs inside a user namespace whose mount point is shared, so a
+    mount made by this test is an event the sandbox could receive. The shim
+    announces itself and blocks on a FIFO until the mount exists; no timer
+    decides when the plant happens. A tool that writes through the link must end
+    the run non-PASS; every case must leave the host's files exactly as the host
+    put them.
+    """
+    bin_dir = _tools(tmp_path)
+    fifo = bin_dir / "release"
+    os.mkfifo(fifo)
+    mount_dir = tmp_path / "mnt"
+    mount_dir.mkdir()
+    _late_mount_shim(bin_dir, fifo, mount_dir, LATE_MOUNT_CASES[case])
+    plan = {
+        "argv": [str(ROOT / "ops/testing/migration_upgrade.sh"), BASE],
+        "env": _wrapper_env(BASE, tmp_path, bin_dir, uuid4().hex),
+        "cwd": str(ROOT),
+        "mount_dir": str(mount_dir),
+        "fifo": str(fifo),
+        "secret": "secret",
+    }
+    (tmp_path / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    helper = Path(__file__).resolve().parent / "wave_h_mid_run_mount.py"
+
+    result = subprocess.run(  # noqa: S603 - fixed helper in a private namespace
+        [
+            UNSHARE,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--propagation",
+            "shared",
+            sys.executable,
+            str(helper),
+            str(tmp_path / "plan.json"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        # Only bounds a failure: the standalone differential alone runs for an hour.
+        timeout=4 * 3600,
+    )
+
+    assert result.returncode == 0, result.stderr
+    outcome = json.loads(result.stdout)
+    output = outcome["output"]
+    assert "PLANTED" in output, output[-3000:]
+    assert "PLANT_FAILED" not in output, output[-3000:]
+    if case in ATOMIC_REPLACERS:
+        # The atomic replace overwrites the planted link and the run completes; a
+        # tool that wrote through it fails here (no such target in the sandbox).
+        assert outcome["returncode"] == 0, output[-3000:]
+    else:
+        assert outcome["returncode"] != 0, output[-3000:]
+    # What the host mounted is exactly what the host put there.
+    assert outcome["target"] == "secret"
+    assert outcome["python3"] == []
+    if case not in ATOMIC_REPLACERS:
+        _not_a_pass(tmp_path)
+
+
+@requires_postgres
+def test_a_same_user_namespace_escape_at_the_real_writer_never_reaches_a_host_file(
+    tmp_path: Path,
+) -> None:
+    """The architect's escape against the real seed writer, judged on the host.
+
+    At the barrier a same-user process enters the sandbox's namespaces and clears
+    MS_RDONLY on the mount that exposes a host file; the writer then follows a
+    planted link to it. The host file is checked here, by this test, without the
+    wrapper's census or audit.
+    """
+    bin_dir = _tools(tmp_path)
+    fifo = bin_dir / "release"
+    os.mkfifo(fifo)
+    mount_dir = tmp_path / "mnt"
+    (mount_dir / "late").mkdir(parents=True)
+    host_file = mount_dir / "late" / "target"
+    host_file.write_text("secret", encoding="utf-8")
+    before = host_file.stat()
+    _late_mount_shim(bin_dir, fifo, mount_dir, LATE_MOUNT_CASES["seed_writer"])
+    environment = _wrapper_env(BASE, tmp_path, bin_dir, uuid4().hex)
+    environment["UPGRADE_SANDBOX_READ_ONLY"] += os.pathsep + str(mount_dir)
+    plan = {
+        "argv": [str(ROOT / "ops/testing/migration_upgrade.sh"), BASE],
+        "env": environment,
+        "cwd": str(ROOT),
+        "mount_dir": str(mount_dir),
+        "fifo": str(fifo),
+        "secret": "secret",
+        "escape": True,
+    }
+    (tmp_path / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    helper = Path(__file__).resolve().parent / "wave_h_mid_run_mount.py"
+
+    result = subprocess.run(  # noqa: S603 - fixed helper in a private namespace
+        [
+            UNSHARE,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--propagation",
+            "shared",
+            sys.executable,
+            str(helper),
+            str(tmp_path / "plan.json"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=4 * 3600,
+    )
+
+    assert result.returncode == 0, result.stderr
+    outcome = json.loads(result.stdout)
+    output = outcome["output"]
+    assert "ESCAPE CLEARED" in output, output[-3000:]
+    assert "PLANTED" in output, output[-3000:]
+    assert outcome["returncode"] != 0, output[-3000:]
+    after = host_file.stat()
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+    assert host_file.read_bytes() == b"secret"
+    _not_a_pass(tmp_path)

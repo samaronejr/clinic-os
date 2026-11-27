@@ -2,11 +2,15 @@
 
 import io
 import os
+import shutil
+import subprocess
+import sys
 import tarfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from ops.testing import migration_upgrade_custody as custody
 from ops.testing.migration_upgrade_custody import (
     check_tree,
     extract_owned,
@@ -16,7 +20,6 @@ from ops.testing.migration_upgrade_custody import (
     write_replacing,
 )
 
-MOUNT = "/dev/shm/migration-upgrade-secrets.x"  # noqa: S108 - sandbox mount name
 DIRECTORY = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
@@ -257,49 +260,93 @@ def test_census_refuses_anything_the_run_did_not_create(
         check_tree(descriptor, identity, created)
 
 
-def test_census_accepts_recorded_and_package_manager_links(
-    run: tuple[Path, int, str],
-) -> None:
+def _stat_key(path: str) -> tuple[int, int]:
+    found = Path(path).stat()
+    return found.st_dev, found.st_ino
+
+
+def _venv_tree(run: tuple[Path, int, str]) -> tuple[Path, int, str, dict[str, str]]:
     root, descriptor, identity = run
     created = _census_tree(root, descriptor, identity)
     (root / "base/.venv/bin").mkdir(parents=True)
     (root / "uv-cache").mkdir()
-    (root / "base/alias").symlink_to("tool.sh")
-    (root / "base/.venv/bin/python").symlink_to("/usr/bin/python3.12")
-    (root / "base/.venv/lib64").symlink_to("lib")
-    (root / "uv-cache/shared").symlink_to("../uv-cache/other")
-    mount = MOUNT
-    (root / "uv-cache/entry").symlink_to(f"{mount}/uv-cache/archive-v0/abc")
-    (root / "uv-cache/shim").symlink_to("/opt/python/bin/python3.13")
     created["uv-cache"] = _identity(root / "uv-cache")
+    return root, descriptor, identity, created
 
-    check_tree(descriptor, identity, created, {"base/alias": "tool.sh"}, mount)
+
+def test_census_accepts_recorded_links_and_links_resolving_inside_the_run(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity, created = _venv_tree(run)
+    (root / "base/alias").symlink_to("tool.sh")
+    (root / "uv-cache/archive").write_bytes(b"x")
+    (root / "uv-cache/entry").symlink_to(root / "uv-cache/archive")
+    (root / "base/.venv/lib64").symlink_to("../../uv-cache/archive")
+
+    check_tree(descriptor, identity, created, {"base/alias": "tool.sh"})
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry: base/alias"):
+        check_tree(descriptor, identity, created, {})
+
+
+@pytest.mark.parametrize("name", ["python3", "python", "python3.13", "interpreter-v4"])
+def test_census_validates_links_by_inode_and_never_by_name(
+    run: tuple[Path, int, str], tmp_path: Path, name: str
+) -> None:
+    """A link to a foreign file named python3 is refused, whatever it is called."""
+    root, descriptor, identity, created = _venv_tree(run)
+    foreign = tmp_path / "foreign" / "python3"
+    foreign.parent.mkdir()
+    foreign.write_bytes(b"foreign")
+    (root / "base/.venv/bin" / name).symlink_to(foreign)
 
     with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
-        check_tree(descriptor, identity, created, {}, mount)
+        check_tree(descriptor, identity, created)
+
+
+def test_census_accepts_a_link_only_when_its_exact_inode_was_recorded(
+    run: tuple[Path, int, str], tmp_path: Path
+) -> None:
+    root, descriptor, identity, created = _venv_tree(run)
+    recorded, other = tmp_path / "recorded", tmp_path / "other"
+    recorded.write_bytes(b"the interpreter")
+    other.write_bytes(b"another file")
+    link = root / "base/.venv/bin/python3"
+    link.symlink_to(recorded)
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+        check_tree(descriptor, identity, created)
+    allowed = frozenset({_stat_key(str(recorded))})
+    check_tree(descriptor, identity, created, allowed=allowed)
+    link.unlink()
+    link.symlink_to(other)
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+        check_tree(descriptor, identity, created, allowed=allowed)
 
 
 @pytest.mark.parametrize(
-    ("name", "target"),
-    [
-        (".venv/bin/python", "/home/foreign/payload"),
-        (".venv/lib64", "../../outside"),
-        ("../uv-cache/shared", "/home/foreign/payload"),
-        ("../uv-cache/shared", f"{MOUNT}/native/seed"),
-    ],
+    "target",
+    ["/proc/self/fd/0", "/proc/self/fd/2", "/dev/fd/1", "/dev/null", "/dev/stdout"],
 )
-def test_census_refuses_package_manager_links_that_leave_their_tree(
-    run: tuple[Path, int, str], name: str, target: str
+@pytest.mark.parametrize("where", ["uv-cache/interpreter-v4", "base/.venv/bin/python3"])
+def test_census_refuses_links_to_proc_and_dev(
+    run: tuple[Path, int, str], target: str, where: str
 ) -> None:
-    root, descriptor, identity = run
-    created = _census_tree(root, descriptor, identity)
-    (root / "base/.venv/bin").mkdir(parents=True)
-    (root / "uv-cache").mkdir()
-    created["uv-cache"] = _identity(root / "uv-cache")
-    (root / "base" / name).symlink_to(target)
+    root, descriptor, identity, created = _venv_tree(run)
+    (root / where).symlink_to(target)
 
     with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
-        check_tree(descriptor, identity, created, {}, MOUNT)
+        check_tree(descriptor, identity, created)
+
+
+def test_census_refuses_a_link_that_does_not_resolve(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity, created = _venv_tree(run)
+    (root / "uv-cache/interpreter-v4").symlink_to(root / "uv-cache/never-made")
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry"):
+        check_tree(descriptor, identity, created)
 
 
 def test_extraction_reports_the_links_the_archive_carried(
@@ -315,19 +362,137 @@ def test_extraction_reports_the_links_the_archive_carried(
     check_tree(descriptor, identity, {"base": _identity(root / "base")}, links)
 
 
-def test_census_refuses_a_second_name_for_an_inode(
+def test_census_accepts_hard_links_whose_every_name_is_inside_the_tree(
     run: tuple[Path, int, str],
 ) -> None:
     root, descriptor, identity = run
     created = _census_tree(root, descriptor, identity)
-    (root / "uv-cache").mkdir()
-    created["uv-cache"] = _identity(root / "uv-cache")
     (root / "base/tool").write_bytes(b"x")
-    (root / "uv-cache/shared").hardlink_to(root / "base/tool")
-    (root / "uv-cache/other").hardlink_to(root / "base/tool")
+    (root / "base/other").hardlink_to(root / "base/tool")
 
-    # uv hard-links between its cache and the venv it fills; elsewhere no.
-    with pytest.raises(RuntimeError, match="private_tree_foreign_entry: base/tool"):
-        check_tree(descriptor, identity, created)
-    (root / "base/tool").unlink()
     check_tree(descriptor, identity, created)
+
+
+def test_census_refuses_a_file_that_has_a_name_outside_the_tree(
+    run: tuple[Path, int, str], tmp_path: Path
+) -> None:
+    root, descriptor, identity = run
+    created = _census_tree(root, descriptor, identity)
+    foreign = tmp_path / "foreign-file"
+    foreign.write_bytes(b"foreign")
+    (root / "base/linked").hardlink_to(foreign)
+
+    with pytest.raises(RuntimeError, match="private_tree_foreign_entry: base/linked"):
+        check_tree(descriptor, identity, created)
+
+
+def _sealed(
+    run: tuple[Path, int, str],
+) -> tuple[Path, int, str, dict[str, list[object]]]:
+    root, descriptor, identity = run
+    created = _census_tree(root, descriptor, identity)
+    (root / "base/a").write_bytes(b"1234")
+    (root / "base/b").symlink_to("a")
+    check_tree(descriptor, identity, created)
+    return root, descriptor, identity, custody.snapshot(descriptor, identity)
+
+
+def test_a_sealed_tree_compares_equal_to_itself_and_allows_named_additions(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity, sealed = _sealed(run)
+
+    custody.unchanged_since(sealed, custody.snapshot(descriptor, identity))
+    (root / "verdict.json").write_bytes(b"{}")
+    custody.unchanged_since(
+        sealed, custody.snapshot(descriptor, identity), frozenset({"verdict.json"})
+    )
+    with pytest.raises(RuntimeError, match=r"private_tree_changed: new verdict\.json"):
+        custody.unchanged_since(sealed, custody.snapshot(descriptor, identity))
+
+
+def test_a_sealed_tree_shows_bytes_rewritten_in_place_at_the_same_size(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity, sealed = _sealed(run)
+    (root / "base/a").write_bytes(b"5678")
+
+    with pytest.raises(RuntimeError, match="private_tree_changed: base/a"):
+        custody.unchanged_since(sealed, custody.snapshot(descriptor, identity))
+
+
+def test_a_sealed_tree_shows_an_object_replaced_by_an_identical_copy(
+    run: tuple[Path, int, str],
+) -> None:
+    root, descriptor, identity, sealed = _sealed(run)
+    # A second inode must exist before the first is released, or tmpfs reuses it.
+    (root / "base/copy").write_bytes(b"1234")
+    (root / "base/copy").replace(root / "base/a")
+
+    with pytest.raises(RuntimeError, match="private_tree_changed: base/a"):
+        custody.unchanged_since(sealed, custody.snapshot(descriptor, identity))
+
+
+def test_a_sealed_tree_shows_a_removed_object(run: tuple[Path, int, str]) -> None:
+    root, descriptor, identity, sealed = _sealed(run)
+    (root / "base/b").unlink()
+
+    with pytest.raises(RuntimeError, match="private_tree_changed: missing base/b"):
+        custody.unchanged_since(sealed, custody.snapshot(descriptor, identity))
+
+
+FOREIGN_MOUNT_PROBE = """
+import os, subprocess, sys
+from ops.testing.migration_upgrade_custody import check_tree
+
+root, mount = sys.argv[1], sys.argv[2]
+descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+found = os.fstat(descriptor)
+identity = f"{found.st_dev}:{found.st_ino}"
+os.mkdir(os.path.join(root, "mnt"))
+subprocess.run([mount, "-t", "tmpfs", "tmpfs", os.path.join(root, "mnt")], check=True)
+try:
+    check_tree(descriptor, identity, {})
+except RuntimeError as refusal:
+    print(refusal)
+"""
+
+
+@pytest.mark.skipif(
+    shutil.which("unshare") is None or shutil.which("mount") is None,
+    reason="needs unshare and mount to make a mount in a private namespace",
+)
+def test_a_mount_visible_to_the_census_under_the_run_is_refused(
+    run: tuple[Path, int, str],
+) -> None:
+    """A filesystem mounted under the run, in the census's own namespace, is refused.
+
+    This is the only mount the census can judge. A bind made inside a child's own
+    mount namespace is invisible to it; that route is the strict xfail in the
+    sandbox tests and rests on the Landlock policy alone.
+    """
+    root, _, _ = run
+    unshare, mount = shutil.which("unshare"), shutil.which("mount")
+    assert unshare is not None
+    assert mount is not None
+
+    result = subprocess.run(  # noqa: S603 - fixed probe in a private namespace
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            sys.executable,
+            "-c",
+            FOREIGN_MOUNT_PROBE,
+            str(root),
+            mount,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "private_tree_foreign_mount: mnt"

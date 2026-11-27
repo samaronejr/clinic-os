@@ -46,7 +46,9 @@ upgrade_dsn() {
 readonly lock_source_dsn="${LOCKS_DATABASE_URL:?LOCKS_DATABASE_URL required}"
 
 psql_super() {
-    sandboxed docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
+    # A supervisor action with fixed arguments, never run inside a child: a child
+    # holding the Docker endpoint could ask the daemon to write anywhere.
+    docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" \
         -e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
         -e CLINIC_SUPER_PASSWORD -e CLINIC_LOCK_PASSWORD \
         "$POSTGRES_CONTAINER" \
@@ -57,6 +59,7 @@ psql_super() {
 # Cleanup is armed before any resource exists so every failure path drops
 # only what this run created; the original exit status is preserved.
 db_created=0
+seal_manifest=""
 secret_dir=""
 run_name=""
 run_fd=""
@@ -88,7 +91,13 @@ remember_open_file() {
 declare -a sandbox_entries=()
 
 sandboxed() {
-    python3 -I "$project_root/ops/testing/migration_upgrade_sandbox.py" \
+    # Network is TCP to the rehearsal database only, unless the call must fetch.
+    # No child talks to a host broker: dispatch stays in the child's own memory.
+    local -a network=(env CELERY_BROKER_URL=memory://)
+    if [[ "${UPGRADE_SANDBOX_NETWORK:-}" != open ]]; then
+        network+=("UPGRADE_SANDBOX_CONNECT_PORTS=$sandbox_db_port")
+    fi
+    "${network[@]}" python3 -I "$project_root/ops/testing/migration_upgrade_sandbox.py" \
         "$$" "${run_fd:--}" "${run_name:--}" "${sandbox_entries[@]}" -- "$@"
 }
 
@@ -115,6 +124,7 @@ mkdir_private_child() {
 
 declare -A run_entries=()
 declare -A run_links=()
+declare -a allowed_inodes=()
 
 hold_private_dir() {
     local held
@@ -142,10 +152,27 @@ guard_private_tree() {
     for entry_name in "${!run_links[@]}"; do
         entry_list+=("link:$entry_name"$'\t'"${run_links[$entry_name]}")
     done
-    entry_list+=("mount:/dev/shm/$run_name")
+    entry_list+=("${allowed_inodes[@]}")
     if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
         check "$run_fd" "$run_identity" "${entry_list[@]}"; then
         setup_detail=private_tree_foreign_entry
+        exit 1
+    fi
+    # Seal what this stage left, hashed, from outside every child.
+    seal_manifest="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/migration-upgrade-seal.$run_nonce"
+    if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+        snapshot "$run_fd" "$run_identity" "$seal_manifest"; then
+        setup_detail=private_tree_foreign_entry
+        exit 1
+    fi
+}
+
+# Before PASS the tree must be byte-for-byte what the last stage sealed, plus
+# the verdict the supervisor's writer produced and nothing else.
+verify_sealed_tree() {
+    if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+        unchanged "$run_fd" "$run_identity" "$seal_manifest" verdict.json; then
+        setup_detail=private_tree_changed
         exit 1
     fi
 }
@@ -277,6 +304,7 @@ cleanup() {
     rc=$?
     trap - EXIT ERR
     trap '' TERM INT HUP
+    [[ -z "${seal_manifest:-}" ]] || rm -f -- "$seal_manifest"
     if [ "$rc" != 0 ]; then
         echo "migration-upgrade: FAIL / $differential_stage${setup_detail:+: $setup_detail} (run $run_id${run_nonce:+, nonce $run_nonce})" >&2
         if [ "$differential_stage" = interrupted ] && [ "$running_published" = 0 ] &&
@@ -435,6 +463,33 @@ wave_tree=""
 native_dir=""
 differential_report="$secret_dir/differential.json"
 export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
+# A child sees only these host paths, each read-only; the interpreter's inode
+# and the project venv's are the only links the census accepts by identity.
+# The only TCP port a child may reach: the rehearsal database.
+sandbox_db_port="$(python3 -I -c 'import sys, urllib.parse as u; print(u.urlsplit(sys.argv[1]).port or "")' "${MIGRATION_DATABASE_URL:-}")"
+interpreter_path="$project_root/.venv/bin/python"
+[[ -e "$interpreter_path" ]] || interpreter_path="$(command -v python3)"
+# UPGRADE_SANDBOX_READ_ONLY lets a caller name further read-only paths.
+sandbox_read_only="${UPGRADE_SANDBOX_READ_ONLY:+$UPGRADE_SANDBOX_READ_ONLY:}$project_root:$(git -C "$project_root" rev-parse --path-format=absolute --git-common-dir)"
+for sandbox_tool in uv git cmp env python3; do
+    sandbox_tool_path="$(command -v "$sandbox_tool")" || continue
+    sandbox_tool_path="$(realpath "$sandbox_tool_path")"
+    sandbox_read_only+=":${sandbox_tool_path%/*}"
+done
+# uv lists its managed interpreters to resolve a fresh sync: read-only, nothing more.
+sandbox_read_only+=":$(uv python dir)"
+for interpreter_candidate in "$interpreter_path" "$(command -v python3)"; do
+    while read -r interpreter_kind interpreter_value; do
+        case "$interpreter_kind" in
+            prefix) sandbox_read_only+=":$interpreter_value" ;;
+            inode) allowed_inodes+=("inode:$interpreter_value") ;;
+        esac
+    done < <(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" interpreter "$interpreter_candidate")
+done
+if [[ -e "$project_root/.venv" ]]; then
+    allowed_inodes+=("inode:$(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" inode "$project_root/.venv")")
+fi
+export UPGRADE_SANDBOX_READ_ONLY="$sandbox_read_only"
 make_private_dir tmp tmp_dir
 make_private_dir uv-cache cache_dir
 export TMPDIR="$tmp_dir" UV_CACHE_DIR="$cache_dir"
@@ -442,8 +497,7 @@ echo "== check out base $base_sha =="
 guard_private_tree
 # git writes only to the pipe; the extractor creates every entry through the
 # run directory descriptor, so no destination name exists for a link to hijack.
-exec {wrapper_stdin}<&0
-coproc ARCHIVE { sandboxed git -C "$project_root" archive --format=tar "$base_sha" <&"$wrapper_stdin"; }
+coproc ARCHIVE { sandboxed git -C "$project_root" archive --format=tar "$base_sha"; }
 archive_process=$ARCHIVE_PID
 archive_in="${ARCHIVE[0]}"
 if ! extracted="$(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
@@ -474,7 +528,7 @@ if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
         "$base_worktree" "${run_entries[base]}" .venv "$venv_target"
     run_links[base/.venv]="$venv_target"
 else
-    (cd "$base_worktree" && sandboxed uv sync --locked --all-groups --quiet)
+    (cd "$base_worktree" && UPGRADE_SANDBOX_NETWORK=open sandboxed uv sync --locked --all-groups --quiet)
 fi
 
 # The KEK dir must live outside work_root: the workflow publishes work_root
@@ -507,7 +561,7 @@ create_and_migrate_base() {
     echo "== create upgrade database $upgrade_db =="
     psql_super -d postgres -qc "CREATE DATABASE $upgrade_db TEMPLATE template0"
     db_created=1
-    psql_super -d "$upgrade_db" \
+    UPGRADE_SANDBOX_STDIN=pipe psql_super -d "$upgrade_db" \
         -v database_name="$upgrade_db" -v app_schema="clinic_app" \
         -f - < "$project_root/ops/db/bootstrap.sql"
     echo "== migrate at base revision =="
@@ -524,7 +578,7 @@ seed_base() {
         collect_probe_cases "$project_root" "$seed_file" "$secret_dir/lane-probes.json" || rc=$?
     else
         UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
-            base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py" || rc=$?
+            UPGRADE_SANDBOX_STDIN=pipe base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py" || rc=$?
     fi
     return "$rc"
 }
@@ -557,7 +611,7 @@ rehearse_wave_h() {
             "$wave_tree" "${run_entries[wave]}" .venv "$venv_target"
         run_links[wave/.venv]="$venv_target"
     else
-        (cd "$wave_tree" && sandboxed uv sync --locked --all-groups --quiet)
+        (cd "$wave_tree" && UPGRADE_SANDBOX_NETWORK=open sandboxed uv sync --locked --all-groups --quiet)
     fi
     test "$(sandboxed git -C "$wave_tree" rev-parse HEAD)" = "$wave_sha"
     test -z "$(sandboxed git -C "$wave_tree" status --porcelain --untracked-files=no)"
@@ -571,7 +625,7 @@ rehearse_wave_h() {
     export LOCKS_DATABASE_URL
     psql_super -d postgres -qc "CREATE DATABASE $wave_db TEMPLATE template0"
     wave_db_created=1
-    psql_super -d "$wave_db" -v database_name="$wave_db" -v app_schema=clinic_app \
+    UPGRADE_SANDBOX_STDIN=pipe psql_super -d "$wave_db" -v database_name="$wave_db" -v app_schema=clinic_app \
         -f - < "$wave_tree/ops/db/bootstrap.sql"
     base_manage migrate --no-input
     differential_stage=reference_probe_case_generation
@@ -589,7 +643,7 @@ rehearse_wave_h() {
         UPGRADE_ADMIN_DATABASE_URL="$(upgrade_dsn "$TEST_SUPERUSER_DATABASE_URL" "$wave_db")" \
         CLINIC_SECRET_DIR="$native" UPGRADE_SEED_FILE="$native/seed.json" \
         UPGRADE_WAVE_H_PROBE_CASES="$native/probes.json" \
-        sandboxed python3 - "$native/environment.json" <<'PYEOF'
+        UPGRADE_SANDBOX_STDIN=pipe sandboxed python3 - "$native/environment.json" <<'PYEOF'
 import json
 import os
 import sys
@@ -643,7 +697,7 @@ if ! psql_super "$upgrade_db" -tAc \
     # A tenant DEK must exist before the protected-field backfill can
     # encrypt existing plaintext rows; issue it through the supported
     # owner boundary.
-    (cd "$project_root" && sandboxed env \
+    (cd "$project_root" && UPGRADE_SANDBOX_STDIN=pipe sandboxed env \
         APP_DATABASE_URL="$owner_dsn" \
         CLINIC_DATA_MODE="synthetic" \
         CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -736,7 +790,7 @@ differential_stage=verifier_differential
 fi
 guard_private_tree
 differential_stage=clean_forward_verification
-(cd "$project_root" && sandboxed env \
+(cd "$project_root" && UPGRADE_SANDBOX_STDIN=pipe sandboxed env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
     CLINIC_SECRET_BACKEND="synthetic-file" \
@@ -764,6 +818,7 @@ if ! sandboxed cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; th
     echo "published upgrade verdict disagrees with the verified base histories" >&2
     exit 1
 fi
+verify_sealed_tree
 guard_private_tree
 differential_stage=verdict_publication
 publish_verdict PASS

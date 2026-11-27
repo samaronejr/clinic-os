@@ -308,7 +308,8 @@ def _inbox_rows(
             ON mi.conversation_id=c.id AND mi.direction='in'
         JOIN clinic_app.comms_message mo
             ON mo.conversation_id=c.id AND mo.direction='out'
-        WHERE c.organization_id=current_setting('app.current_tenant')::uuid""",
+        WHERE c.organization_id=current_setting('app.current_tenant')::uuid
+        ORDER BY c.created_at, c.id""",
         [kek, kek, INBOUND_BODY, kek, OUTBOUND_BODY, kek, CLINIC_NAME],
     )
     return cursor.fetchall()
