@@ -394,9 +394,13 @@ database trust boundary, not as proof against a superuser.
   scheduling counters; never SQL, connection strings or input values.
   Before spawning, save the inherited `SIGCHLD` disposition, install `SIG_DFL`
   (including when the old setting appears to be default), and restore it on
-  exit. Each launcher passes its own pidfd through a private socket and waits
-  for acknowledgement before exec. An interrupted launch is recovered through
-  that socket or aborted by EOF, never by guessing its PID.
+  exit. Launcher creation uses glibc `pidfd_spawn` (`CLONE_PIDFD`): the
+  kernel-created handle is published into a preallocated parent slot with
+  cleanup installed before the native call. A child-generated pidfd, sent
+  on a private socket, must match that original identity before the workload
+  is admitted. It is **not** needed to reclaim the child. A lost constructor
+  return together with EOF, an invalid/unreadable receipt, or a still-live
+  silent gate is cleaned up and reaped by the parent's birth handle.
   On timeout or error, signal only kernel handles. The dedicated subreaper
   reaps Make and its adopted children through authenticated pidfds. The outer
   watchdog uses a pidfd bound to the worker's private group; if the kernel
@@ -406,6 +410,15 @@ database trust boundary, not as proof against a superuser.
   hold that window open. Observer teardown has a separate bounded budget,
   not an extension of the 15-second Make deadline. The trace locates observed
   waits, not the historical cause of an unmeasured stall.
+- The orphan regression driver, Make/process probes, pooling helpers and
+  bounded renewal commands use handle-bound deadlines as well. The KEK
+  static gate (`python -m ops.testing.kek_signal_audit`) derives its Python,
+  shell and Make source census from Git history since the fixed lane base;
+  a working-tree run includes pending renames and new, non-ignored files.
+  It rejects numeric signal APIs, unresolved process signal methods and
+  implicit `subprocess` timeout signalling. The static certificate uses
+  the exact committed Git blobs. No subprocess fallback is selected if
+  atomic pidfd creation or the required group signalling is unavailable.
 - Give the inspector `CONNECT` on restricted databases; do not grant runtime
   logins extra access for the check. On a stock PG16 cluster even a superuser
   cannot connect to `template0` while `datallowconn` is false. With an explicit

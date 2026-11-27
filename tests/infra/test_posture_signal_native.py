@@ -11,7 +11,9 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
+from ops.testing import pidfd_spawn
 from ops.testing.final_e2e_supervisor import require_subreaper
+from ops.testing.pidfd_command import Command, run_text
 
 from infra import posture_child_lifetime as custody
 
@@ -36,42 +38,35 @@ def _native_assertions(prior: signal.Handlers) -> None:
 def test_native_interrupted_constructor_recovers_escrowed_handle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Lose the Python return value after a real private child exists. Only its
-    # socket receipt is available to the production launcher. Never admit exec.
+    # Lose the Python return after kernel creation. Retain a separate witness,
+    # not a Popen or the production owner slot, to check the actual wait status.
     prior = signal.signal(signal.SIGCHLD, signal.SIG_IGN)
-    real_spawn = subprocess.Popen
-    started: list[subprocess.Popen[bytes]] = []
+    acquire = pidfd_spawn.acquire
+    witness: list[int] = []
     try:
 
-        def interrupted(*_args: object, **kwargs: object) -> None:
+        def interrupted(slot: pidfd_spawn.PidfdSlot, plan: pidfd_spawn.Launch) -> None:
             assert signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
-            fds = kwargs["pass_fds"]
-            assert isinstance(fds, tuple)
-            env = kwargs["env"]
-            assert isinstance(env, dict)
-            proc = real_spawn(
-                (sys.executable, "-I", "-S", "tests/infra/posture_spawn_gate.py"),
-                cwd=Path(__file__).resolve().parents[2],
-                pass_fds=fds,
-                env=env,
-                start_new_session=True,
-            )
-            started.append(proc)
+            assert isinstance(plan.fds, tuple)
+            assert isinstance(plan.env, dict)
+            acquire(slot, plan)
+            witness.append(os.dup(slot.value))
             message = "interrupted native receipt publication"
             raise OSError(message)
 
-        monkeypatch.setattr(subprocess, "Popen", interrupted)
+        monkeypatch.setattr(pidfd_spawn, "acquire", interrupted)
         with (
             pytest.raises(OSError, match="interrupted native receipt publication"),
             custody.owned_spawn("worker", time.monotonic() + 3),
         ):
             pytest.fail("a partially constructed launcher admitted its workload")
         assert signal.getsignal(signal.SIGCHLD) == signal.SIG_IGN
-        (proc,) = started
+        (fd,) = witness
         with pytest.raises(ChildProcessError):
-            os.waitpid(proc.pid, os.WNOHANG)
-        proc.wait()  # Reconcile the test-only retained Popen, never signal by PID.
+            os.waitid(os.P_PIDFD, fd, os.WEXITED | os.WNOHANG | os.WNOWAIT)
     finally:
+        for fd in witness:
+            os.close(fd)
         signal.signal(signal.SIGCHLD, prior)
 
 
@@ -142,11 +137,14 @@ def _session_error() -> None:
 
 def test_outer_watchdog_handle_terminates_its_owned_session() -> None:
     root = Path(__file__).resolve().parents[2]
-    subprocess.run(
+    run_text(
         (sys.executable, "-m", "infra.test_posture_signal_native", "session"),
-        cwd=root,
-        env=os.environ
-        | {"PYTHONPATH": os.pathsep.join(map(str, (root / "tests", root)))},
+        Command(
+            12,
+            cwd=root,
+            env=os.environ
+            | {"PYTHONPATH": os.pathsep.join(map(str, (root / "tests", root)))},
+        ),
         check=True,
     )
 

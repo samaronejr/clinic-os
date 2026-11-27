@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Final
+
+from ops.testing.pidfd_command import Command, run_text
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
 MAKE_BINARY: Final = shutil.which("make")
@@ -35,7 +36,7 @@ def test_db_bootstrap_keeps_role_credentials_out_of_process_arguments(
     assert MAKE_BINARY is not None
 
     # When: the real Make bootstrap recipe drives both psql invocations.
-    result = subprocess.run(  # noqa: S603 - fixed Make binary and tuple argv.
+    result = run_text(
         (
             MAKE_BINARY,
             "db-bootstrap",
@@ -47,12 +48,7 @@ def test_db_bootstrap_keeps_role_credentials_out_of_process_arguments(
                 for name, value in zip(PASSWORD_VARIABLES, credentials, strict=True)
             ),
         ),
-        cwd=PROJECT_ROOT,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=PROCESS_TIMEOUT_SECONDS,
+        Command(PROCESS_TIMEOUT_SECONDS, cwd=PROJECT_ROOT, env=environment),
     )
 
     # Then: values remain environment data, reach SQL, and never enter argv/output.
@@ -88,7 +84,7 @@ def test_db_posture_keeps_database_url_out_of_process_arguments(
     assert MAKE_BINARY is not None
 
     # When: the posture target launches its fixed Python program.
-    result = subprocess.run(  # noqa: S603 - fixed Make binary and tuple argv.
+    result = run_text(
         (
             MAKE_BINARY,
             "db-posture",
@@ -99,12 +95,7 @@ def test_db_posture_keeps_database_url_out_of_process_arguments(
             "POSTGRES_DB=clinic",
             "TEST_DATABASE_NAME=test_clinic",
         ),
-        cwd=PROJECT_ROOT,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=PROCESS_TIMEOUT_SECONDS,
+        Command(PROCESS_TIMEOUT_SECONDS, cwd=PROJECT_ROOT, env=environment),
     )
 
     # Then: the URL reaches the process environment but never any host process argv.

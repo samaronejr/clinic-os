@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import subprocess
+
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Final
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import pytest
+from ops.testing.pidfd_command import Command, run_text
 
 from database_urls import database_url_for_name
 
@@ -44,14 +49,9 @@ def _run_posture(database_url: str) -> subprocess.CompletedProcess[str]:
         }
     )
     assert MAKE_BINARY is not None
-    return subprocess.run(  # noqa: S603 - fixed Make binary and tuple argv.
+    return run_text(
         (MAKE_BINARY, "db-posture", "DOCKER=true"),
-        cwd=PROJECT_ROOT,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=MAKE_TIMEOUT_SECONDS,
+        Command(MAKE_TIMEOUT_SECONDS, cwd=PROJECT_ROOT, env=environment),
     )
 
 

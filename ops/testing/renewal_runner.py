@@ -72,6 +72,7 @@ from ops.testing.isolation_common import (
     utc_now,
     write_no_replace,
 )
+from ops.testing.pidfd_command import Command, run_bytes
 from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
 from ops.testing.sentinel_runtime import (
@@ -523,11 +524,9 @@ def _repository() -> Path:
     git = shutil.which("git")
     if git is None:
         _fail("git executable is unavailable")
-    completed = subprocess.run(  # noqa: S603 - fixed executable, closed argv.
+    completed = run_bytes(
         (git, "-C", str(root), "rev-parse", "--show-toplevel"),
-        check=False,
-        capture_output=True,
-        timeout=COMMAND_TIMEOUT_SECONDS,
+        Command(COMMAND_TIMEOUT_SECONDS),
     )
     if completed.returncode != 0:
         _fail("renewal runner must run inside a Git checkout")
@@ -733,13 +732,8 @@ def _docker(
     if executable is None:
         _fail("docker executable is unavailable")
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed executable, closed argv.
-            (executable, *arguments),
-            check=False,
-            capture_output=True,
-            input=stdin,
-            env=environment,
-            timeout=timeout,
+        completed = run_bytes(
+            (executable, *arguments), Command(timeout, stdin=stdin, env=environment)
         )
     except subprocess.TimeoutExpired as error:
         message = "renewal docker command timed out"
@@ -950,26 +944,13 @@ def _run_bounded(
 ) -> int:
     """Run one child in its own process group with a hard wall-clock bound."""
     with log.open("wb") as stream:
-        process = subprocess.Popen(  # noqa: S603 - fixed interpreter, closed argv.
-            argv,
-            cwd=cwd,
-            env=environment,
-            start_new_session=True,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
         try:
-            return process.wait(timeout=timeout)
+            result = run_bytes(
+                argv, Command(timeout, cwd=cwd, env=environment, log=stream)
+            )
         except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
             return 124
-        except BaseException:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=COMMAND_TIMEOUT_SECONDS)
-            raise
+    return result.returncode
 
 
 def _migrate(repository: Path, owner_dsn: str, log: Path) -> None:
@@ -1246,7 +1227,7 @@ def _authorized_untracked(repository: Path) -> tuple[str, ...]:
     git = shutil.which("git")
     if git is None:
         _fail("git executable is unavailable")
-    completed = subprocess.run(  # noqa: S603 - fixed executable, closed argv.
+    completed = run_bytes(
         (
             git,
             "-C",
@@ -1256,9 +1237,7 @@ def _authorized_untracked(repository: Path) -> tuple[str, ...]:
             "--exclude-standard",
             "-z",
         ),
-        check=False,
-        capture_output=True,
-        timeout=COMMAND_TIMEOUT_SECONDS,
+        Command(COMMAND_TIMEOUT_SECONDS),
     )
     if completed.returncode != 0:
         _fail("renewal untracked enumeration failed")

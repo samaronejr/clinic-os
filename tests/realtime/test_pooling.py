@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from typing import TYPE_CHECKING
 
@@ -13,6 +12,7 @@ import pytest
 from django.conf import settings
 from django.db import connection, connections
 from ops.db.posture import PINNED_ROLES
+from ops.testing.pidfd_command import Command, run_text
 from psycopg.conninfo import conninfo_to_dict
 
 from database_urls import database_url_for_name
@@ -127,25 +127,17 @@ def test_production_pooling_requires_an_explicit_session_connection(
     environment.pop("REALTIME_TOPIC_SECRET", None)
     if explicit:
         environment["LOCKS_DATABASE_URL"] = database_url
-    result = subprocess.run(
+    result = run_text(
         [sys.executable, "-c", "import config.settings.prod"],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=15,
+        Command(15, env=environment),
     )
     assert (result.returncode == 0) is explicit
     assert database_url not in result.stderr
     if explicit:
         environment["REALTIME_TOPIC_SECRET"] = ""
-        rejected = subprocess.run(
+        rejected = run_text(
             [sys.executable, "-c", "import config.settings.prod"],
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
+            Command(15, env=environment),
         )
         assert rejected.returncode != 0
         assert database_url not in rejected.stderr
@@ -161,7 +153,7 @@ def test_realtime_settings_mount_only_stream_without_tenant_middleware(
         "CELERY_BROKER_URL": "memory://",
         "CELERY_RESULT_BACKEND": "",
     }
-    result = subprocess.run(
+    result = run_text(
         [
             sys.executable,
             "-c",
@@ -172,11 +164,8 @@ def test_realtime_settings_mount_only_stream_without_tenant_middleware(
             "for x in get_resolver().url_patterns], 'middleware':s.MIDDLEWARE, "
             "'ages':[d['CONN_MAX_AGE'] for d in s.DATABASES.values()]}))",
         ],
-        env=env,
+        Command(15, env=env),
         check=True,
-        capture_output=True,
-        text=True,
-        timeout=15,
     )
     payload = json.loads(result.stdout)
     assert payload["routes"] == ["rt/stream"]

@@ -8,18 +8,23 @@ import select
 import selectors
 import signal
 import socket
-import subprocess
 import sys
 import time
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Never
 
+from ops.testing import pidfd_spawn
+from ops.testing.pidfd_command import Birth, waitable_children
+
 if TYPE_CHECKING:
+    import subprocess
     from collections.abc import Iterator
+    from typing import BinaryIO
 
 CLEANUP_SECONDS = 3
 _PEEK = os.WEXITED | os.WNOHANG | os.WNOWAIT
+__all__ = ["waitable_children"]
 # Linux UAPI linux/pidfd.h (6.9+). Only the outer worker starts a new session.
 # Signal scope is the group bound to the original pidfd, not the numeric PGID.
 _PIDFD_SIGNAL_PROCESS_GROUP = 1 << 2
@@ -30,36 +35,13 @@ def _bad_receipt() -> Never:
     raise RuntimeError(message)
 
 
-@contextmanager
-def waitable_children() -> Iterator[str]:
-    inherited = signal.getsignal(signal.SIGCHLD)
-    if inherited is None:
-        message = "cannot restore an unknown SIGCHLD disposition"
-        raise RuntimeError(message)
-    # Install even for DFL: an inherited SA_NOCLDWAIT must not survive.
-    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
-    try:
-        yield (
-            "ignored"
-            if inherited == signal.SIG_IGN
-            else "default"
-            if inherited == signal.SIG_DFL
-            else "handler"
-        )
-    finally:
-        signal.signal(signal.SIGCHLD, inherited)
-        if signal.getsignal(signal.SIGCHLD) != inherited:
-            message = "inherited SIGCHLD disposition was not restored"
-            raise RuntimeError(message)
-
-
 def exited(fd: int, until: float) -> bool:
     poller = select.poll()
     poller.register(fd, select.POLLIN)
     return bool(poller.poll(max(0, math.ceil((until - time.monotonic()) * 1000))))
 
 
-def worker_output(proc: subprocess.Popen[bytes], fd: int, until: float) -> bytes:
+def worker_output(proc: Birth, fd: int, until: float) -> bytes:
     """Drain both pipes without letting communicate()/wait() reap the leader."""
     assert proc.stdout is not None
     assert proc.stderr is not None
@@ -136,7 +118,7 @@ def drain_adopted(until: float) -> None:
 
 
 def reap_owned(
-    proc: subprocess.Popen[bytes] | None,
+    proc: subprocess.Popen[bytes] | Birth | None,
     fd: int | None = None,
     *,
     session: bool = False,
@@ -157,7 +139,9 @@ def reap_owned(
             proc.returncode = code
 
 
-def reap_tree(proc: subprocess.Popen[bytes] | None, fd: int | None = None) -> None:
+def reap_tree(
+    proc: subprocess.Popen[bytes] | Birth | None, fd: int | None = None
+) -> None:
     # An already-reaped, handleless value conveys no ownership at all.
     if fd is None and proc is not None and proc.returncode is not None:
         return
@@ -190,65 +174,67 @@ def _receive(channel: socket.socket) -> int:
 @contextmanager
 def owned_spawn(
     kind: Literal["make", "worker"], until: float
-) -> Iterator[tuple[subprocess.Popen[bytes], int]]:
+) -> Iterator[tuple[Birth, int]]:
     with waitable_children(), _launch(kind, until) as child:
         yield child
+
+
+def _capture_pipe(readers: ExitStack, writers: ExitStack) -> tuple[BinaryIO, int]:
+    read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
+    writers.callback(os.close, write_fd)
+    return readers.enter_context(os.fdopen(read_fd, "rb", buffering=0)), write_fd
 
 
 @contextmanager
 def _launch(
     kind: Literal["make", "worker"], until: float
-) -> Iterator[tuple[subprocess.Popen[bytes], int]]:
-    """EOF aborts an unpublished launch. Only a validated pidfd permits exec."""
-    proc: subprocess.Popen[bytes] | None = None
-    fd: int | None = None
-    admitted = False
+) -> Iterator[tuple[Birth, int]]:
+    """Admission is a user-space handshake; custody is not. It exists at clone."""
+    proc = Birth()
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-    with parent, child:
+    receipt: int | None = None
+    admitted = False
+    with parent, child, ExitStack() as readers:
         try:
-            try:
-                proc = subprocess.Popen(
+            with ExitStack() as writers:
+                null = writers.enter_context(Path(os.devnull).open("r+b", buffering=0))
+                output = null.fileno()
+                if kind == "worker":
+                    proc.stdout, output = _capture_pipe(readers, writers)
+                proc.stderr, errors = _capture_pipe(readers, writers)
+                plan = pidfd_spawn.Launch(
                     (sys.executable, "-I", "-S", "tests/infra/posture_spawn_gate.py"),
+                    ((null.fileno(), 0), (output, 1), (errors, 2), (child.fileno(), 3)),
                     cwd=Path(__file__).resolve().parents[2],
                     env=os.environ
-                    | {
-                        "CLINIC_TEST_GATE_FD": str(child.fileno()),
-                        "CLINIC_TEST_GATE_KIND": kind,
-                    },
-                    pass_fds=(child.fileno(),),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE if kind == "worker" else subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    bufsize=0,
-                    start_new_session=kind == "worker",
+                    | {"CLINIC_TEST_GATE_FD": "3", "CLINIC_TEST_GATE_KIND": kind},
+                    session=kind == "worker",
                 )
-            finally:
-                child.close()  # This process must never keep the peer endpoint open.
+                pidfd_spawn.acquire(proc.slot, plan)
+            child.close()
             parent.settimeout(max(0, until - time.monotonic()))
-            fd = _receive(parent)
+            receipt = _receive(parent)
+            if not os.path.samestat(os.fstat(receipt), os.fstat(proc.fd)):
+                _bad_receipt()
             if kind == "worker":
-                # Fail closed *before* admitting a tree on an unsupported kernel.
-                signal.pidfd_send_signal(fd, 0, None, _PIDFD_SIGNAL_PROCESS_GROUP)
-            admitted = True  # A failed send could have delivered the byte.
+                signal.pidfd_send_signal(proc.fd, 0, None, _PIDFD_SIGNAL_PROCESS_GROUP)
+            admitted = True
             parent.sendall(b"G")
-            yield proc, fd
+            yield proc, proc.fd
         finally:
+            # Reclaim through the parent slot before closing channels: even
+            # an error while shutting a socket cannot bypass the kernel wait.
             try:
-                if fd is None:
-                    # The constructor may have forked and then raised before
-                    # returning Popen. Recover only through its private channel.
-                    parent.settimeout(CLEANUP_SECONDS)
-                    with suppress(OSError, RuntimeError):
-                        fd = _receive(parent)
-                parent.close()  # No receipt/release: the gate exits without exec.
-                if kind == "make":
-                    reap_tree(proc, fd)
-                else:
-                    reap_owned(proc, fd, session=admitted)
+                if proc.slot.value >= 0:
+                    if kind == "make":
+                        reap_tree(proc, proc.fd)
+                    else:
+                        reap_owned(proc, proc.fd, session=admitted)
             finally:
-                if fd is not None:
-                    os.close(fd)
-                if proc is not None:
-                    for stream in (proc.stdout, proc.stderr):
-                        if stream is not None:
-                            stream.close()
+                try:
+                    if receipt is not None:
+                        os.close(receipt)
+                finally:
+                    if proc.slot.value >= 0:
+                        os.close(proc.fd)
+                        proc.slot.value = -1

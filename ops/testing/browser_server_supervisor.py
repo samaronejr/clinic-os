@@ -21,6 +21,7 @@ import socket
 import subprocess
 import sys
 import time
+import weakref
 from pathlib import Path
 from typing import Final, Never
 
@@ -46,6 +47,40 @@ TFD_TIMER_ABSTIME: Final = 1
 PR_SET_CHILD_SUBREAPER: Final = 36
 PROTECTED_DATABASE_PORT: Final = 5432
 MAX_PORT: Final = 65535
+_PIDFD_SIGNAL_PROCESS_GROUP: Final = 1 << 2
+
+
+class _GroupHandle:
+    """A retained group-leader identity, valid even if its status was consumed."""
+
+    def __init__(self, process: subprocess.Popen[bytes]) -> None:
+        self.fd = os.pidfd_open(process.pid)
+        try:
+            os.waitid(os.P_PIDFD, self.fd, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if os.getpgid(process.pid) != process.pid:
+                _fail("master is not the leader of its private group")
+        except BaseException:
+            os.close(self.fd)
+            raise
+        self.close = weakref.finalize(process, os.close, self.fd)
+
+    def signal(self, signum: int) -> bool:
+        try:
+            signal.pidfd_send_signal(self.fd, signum, None, _PIDFD_SIGNAL_PROCESS_GROUP)
+        except ProcessLookupError:
+            return False
+        return True
+
+
+_GROUPS: Final[weakref.WeakKeyDictionary[subprocess.Popen[bytes], _GroupHandle]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _pin_group(process: subprocess.Popen[bytes]) -> _GroupHandle:
+    if process not in _GROUPS:
+        _GROUPS[process] = _GroupHandle(process)
+    return _GROUPS[process]
 
 
 class SupervisorError(RuntimeError):
@@ -208,9 +243,7 @@ def _wait_for_group(process: subprocess.Popen[bytes], deadline: float) -> bool:
         else:
             adopted = _adopted_member(process.pid)
             if adopted is None:
-                try:
-                    os.killpg(process.pid, 0)
-                except ProcessLookupError:
+                if not _pin_group(process).signal(0):
                     return True
                 # An adoption raced the process table scan. Never report an
                 # empty group without the kernel confirming it.
@@ -230,10 +263,11 @@ def _terminate_group(process: subprocess.Popen[bytes]) -> None:
     for signum in (signal.SIGTERM, signal.SIGKILL):
         # A live or unreaped owned child pins the group identity. Do not
         # signal a numeric PGID after the entire owned group has been reaped.
-        if process.poll() is None or _adopted_member(process.pid) is not None:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signum)
+        handle = _pin_group(process)
+        handle.signal(signum)
         if _wait_for_group(process, time.monotonic() + TERMINATION_GRACE_SECONDS):
+            handle.close()
+            del _GROUPS[process]
             return
     _fail("Gunicorn process group or listener still owned after teardown deadline")
 
@@ -324,6 +358,7 @@ class SupervisedMaster:
     def __init__(self, process: subprocess.Popen[bytes]) -> None:
         """Retain the forked master and its process group."""
         self.process = process
+        _pin_group(process)
         # Popen completes setsid() before returning, even if exec exits fast.
         self.pgid = process.pid
         self._terminated = False

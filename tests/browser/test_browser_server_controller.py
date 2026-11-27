@@ -23,22 +23,27 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
     for name in controller.REQUIRED_ENVIRONMENT:
         monkeypatch.setenv(name, "synthetic")
     monkeypatch.setenv("CLINIC_BROWSER_EVIDENCE_ROOT", str(tmp_path))
-    process = Mock(spec=subprocess.Popen, pid=58419)
-
     with ExitStack() as server:
+        read_fd, write_fd = os.pipe()
+        server.callback(os.close, write_fd)
+        server.callback(os.close, read_fd)
+        started: list[subprocess.Popen[bytes]] = []
 
         def spawn(
-            argv: list[str], *, pass_fds: tuple[int, ...] = (), **kwargs: object
-        ) -> Mock:
+            argv: list[str],
+            environment: dict[str, str],
+            log: Path,
+            *,
+            owner: list[supervisor.SupervisedMaster],
+            pass_fds: tuple[int, ...] = (),
+        ) -> supervisor.SupervisedMaster:
             bind = argv[argv.index("--bind") + 1]
             if pass_fds:
                 (fd,) = pass_fds
                 assert bind == f"fd://{fd}"
-                listener = server.enter_context(
-                    socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
-                )
-                assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
-                address = listener.getsockname()
+                with socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM) as listener:
+                    assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
+                    address = listener.getsockname()
             else:
                 host, port = bind.split(":")
                 address = (host, int(port))
@@ -49,9 +54,21 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
                 competitor.bind(address)
             assert raised.value.errno == errno.EADDRINUSE
             assert pass_fds
-            return process
+            # Only replace Gunicorn. Use the real supervisor and a pipe-blocked
+            # child that keeps the listener after the controller closes its copy.
+            master = supervisor.start_master(
+                ["/usr/bin/cat", f"/proc/self/fd/{read_fd}"],
+                environment,
+                log,
+                owner=owner,
+                pass_fds=(*pass_fds, read_fd),
+            )
+            started.append(master.process)
+            return master
 
         def ready(port: int, *args: object) -> None:
+            assert len(started) == 1
+            assert started[0].poll() is None
             with (
                 socket.socket(socket.AF_INET, socket.SOCK_STREAM) as competitor,
                 pytest.raises(OSError, match=r"\[Errno 98\]") as raised,
@@ -59,15 +76,13 @@ def test_controller_keeps_port_bound_through_gunicorn_handoff(
                 competitor.bind((controller.HOST, port))
             assert raised.value.errno == errno.EADDRINUSE
 
-        monkeypatch.setattr(subprocess, "Popen", spawn)
+        monkeypatch.setattr(controller, "start_master", spawn)
         monkeypatch.setattr(controller, "wait_until_ready", ready)
-        monkeypatch.setattr(
-            supervisor.SupervisedMaster, "terminate", lambda _: server.close()
-        )
         monkeypatch.setattr(controller, "build_suite", lambda *_: dict)
         monkeypatch.setattr(controller, "export_artifacts", lambda *_: {})
 
         assert controller.run_suite("patient", ["patient"]) == os.EX_OK
+        assert started[0].returncode is not None
 
 
 def test_readiness_rejects_a_dead_master_before_probing(

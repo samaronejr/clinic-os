@@ -15,6 +15,7 @@ from typing import cast
 
 import pytest
 from ops.testing.final_e2e_supervisor import require_subreaper
+from ops.testing.pidfd_command import Command, run_text
 
 from infra import posture_child_lifetime as lifetime
 
@@ -109,12 +110,14 @@ def _real_orphan() -> None:
 
 def test_successful_leader_with_surviving_owned_child_is_reaped() -> None:
     root = Path(__file__).resolve().parents[2]
-    subprocess.run(
+    run_text(
         (sys.executable, "-m", "infra.test_posture_group_identity"),
-        cwd=root,
-        env=os.environ
-        | {"PYTHONPATH": os.pathsep.join(map(str, (root / "tests", root)))},
-        timeout=12,
+        Command(
+            12,
+            cwd=root,
+            env=os.environ
+            | {"PYTHONPATH": os.pathsep.join(map(str, (root / "tests", root)))},
+        ),
         check=True,
     )
 

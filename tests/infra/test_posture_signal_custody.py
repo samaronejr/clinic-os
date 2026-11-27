@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import io
 import os
 import signal
 import socket
-import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import ExitStack, nullcontext
 from threading import Event
@@ -15,6 +13,7 @@ from typing import Self, cast
 
 import psycopg
 import pytest
+from ops.testing import pidfd_spawn
 
 from infra import posture_child_lifetime as custody
 from infra import posture_observation as observation
@@ -27,7 +26,7 @@ class _Leader:
     stdout = None
 
     def __init__(self) -> None:
-        self.stderr = io.BytesIO()
+        self.stderr = None
 
     def wait(self, timeout: float | None = None) -> int:
         self.returncode = 0
@@ -67,19 +66,15 @@ class _ReuseKernel:
         self.released.set()
         assert self.reused.wait(timeout=3)
 
-    def spawn(
-        self, *_a: object, pass_fds: tuple[int, ...] = (), **_kw: object
-    ) -> _Leader:
+    def spawn(self, slot: pidfd_spawn.PidfdSlot, plan: pidfd_spawn.Launch) -> None:
         self.dispositions.append(signal.getsignal(signal.SIGCHLD))
-        if pass_fds:
-            channel = self.stack.enter_context(
-                socket.socket(fileno=os.dup(pass_fds[0]))
-            )
-            assert socket.send_fds(channel, [b"P"], [self.token]) == 1
+        slot.value = os.dup(self.token)
+        (peer,) = (src for src, dst in plan.fds if dst == 3)
+        channel = self.stack.enter_context(socket.socket(fileno=os.dup(peer)))
+        assert socket.send_fds(channel, [b"P"], [self.token]) == 1
         if self.partial:
             message = "fixture constructor interrupted after child creation"
             raise OSError(message)
-        return self.leader
 
     def observation_error(self, _id: int, _until: float) -> bool:
         # Stress both dispositions with a number already reassigned. Under
@@ -145,7 +140,7 @@ def test_lost_number_cannot_authorize_error_cleanup(
             )
             # Both implementations meet the same kernel model at their launch,
             # observation and signal interfaces. No real syscall can signal anyone.
-            monkeypatch.setattr(subprocess, "Popen", kernel.spawn)
+            monkeypatch.setattr(pidfd_spawn, "acquire", kernel.spawn)
             monkeypatch.setattr(os, "killpg", kernel.by_number)
             monkeypatch.setattr(os, "kill", kernel.by_number)
             monkeypatch.setattr(os, "waitid", kernel.waitid)
