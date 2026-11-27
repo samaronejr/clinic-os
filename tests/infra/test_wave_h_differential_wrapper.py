@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import uuid4
@@ -1098,9 +1099,8 @@ def test_a_pinned_wave_writer_run_with_the_real_uv_never_writes_a_planted_link(
 # The reviewer's plant points, each driven by the real tool that opens it: the
 # census-approved interpreter link under the real makemigrations, the pinned seed
 # writer, and the pinned native verifier. Each link names a late host mount.
-# These tools publish by atomic replace, so the planted link is overwritten and
-# never written through: the run must complete and the host file stay identical.
-ATOMIC_REPLACERS = frozenset({"native_verifier"})
+# The pinned native verifier publishes with ``write_text``, which follows a link,
+# so every case here is a write through a planted link that must not land.
 LATE_MOUNT_CASES = {
     "interpreter_cache": (
         '"$*" == *"manage.py makemigrations"*',
@@ -1127,7 +1127,10 @@ def _late_mount_shim(
     shim.write_text(
         "#!/bin/bash\n"
         'RUN="$UPGRADE_PRIVATE_RUN_DIR"\n'
-        'NATIVE="${UPGRADE_WAVE_H_PROBE_CASES%/*}"\n'
+        # The differential's probe file is the lane's, in the run directory; the
+        # native directory is where the pinned writers' environment file lives.
+        'NATIVE="${UPGRADE_WAVE_H_NATIVE_ENV:-$UPGRADE_WAVE_H_PROBE_CASES}"\n'
+        'NATIVE="${NATIVE%/*}"\n'
         'CACHE="$UV_CACHE_DIR"\n'
         f"if [[ {trigger} ]]; then\n"
         "    echo MOUNT_NOW >&2\n"
@@ -1139,11 +1142,7 @@ def _late_mount_shim(
         f"        echo PLANT_FAILED {label}{name} >&2\n"
         "    fi\n"
         "fi\n"
-        f'{real} "$@"\nstatus=$?\n'
-        'if [[ "$*" == *"manage.py makemigrations"* ]]; then\n'
-        '    ln -s -- "$RUN/tmp" "$RUN/native/leftover"\n'
-        "fi\n"
-        "exit $status\n",
+        f'{real} "$@"\nexit $?\n',
         encoding="utf-8",
     )
     shim.chmod(0o700)
@@ -1160,8 +1159,7 @@ def test_a_real_tool_never_writes_through_a_link_to_a_mount_made_mid_run(
     mount made by this test is an event the sandbox could receive. The shim
     announces itself and blocks on a FIFO until the mount exists; no timer
     decides when the plant happens. A tool that writes through the link must end
-    the run non-PASS; every case must leave the host's files exactly as the host
-    put them.
+    the run non-PASS and leave the host's files exactly as the host put them.
     """
     bin_dir = _tools(tmp_path)
     fifo = bin_dir / "release"
@@ -1204,17 +1202,11 @@ def test_a_real_tool_never_writes_through_a_link_to_a_mount_made_mid_run(
     output = outcome["output"]
     assert "PLANTED" in output, output[-3000:]
     assert "PLANT_FAILED" not in output, output[-3000:]
-    if case in ATOMIC_REPLACERS:
-        # The atomic replace overwrites the planted link and the run completes; a
-        # tool that wrote through it fails here (no such target in the sandbox).
-        assert outcome["returncode"] == 0, output[-3000:]
-    else:
-        assert outcome["returncode"] != 0, output[-3000:]
+    assert outcome["returncode"] != 0, output[-3000:]
     # What the host mounted is exactly what the host put there.
     assert outcome["target"] == "secret"
     assert outcome["python3"] == []
-    if case not in ATOMIC_REPLACERS:
-        _not_a_pass(tmp_path)
+    _not_a_pass(tmp_path)
 
 
 @requires_postgres
@@ -1278,4 +1270,285 @@ def test_a_same_user_namespace_escape_at_the_real_writer_never_reaches_a_host_fi
     after = host_file.stat()
     assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
     assert host_file.read_bytes() == b"secret"
+    _not_a_pass(tmp_path)
+
+
+def _gate(real: str, fifo: Path, trigger: str, action: str = "") -> str:
+    """A stand-in tool: at the trigger act, announce, and wait for the peer."""
+    return (
+        "#!/bin/bash\n"
+        f"if [[ {trigger} ]]; then\n"
+        f"{action}"
+        "    echo MOUNT_NOW >&2\n"
+        f'    read -r -t 300 _ < "{fifo}"\n'
+        "fi\n"
+        f'exec {real} "$@"\n'
+    )
+
+
+def _rewrite_attestations(names: tuple[str, ...]) -> str:
+    """Bash that rewrites run files the way anything able to write the run could."""
+    listed = " ".join(repr(name) for name in names)
+    return (
+        f"    python3 - \"$UPGRADE_PRIVATE_RUN_DIR\" {listed} <<'PYEOF'\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "for name in sys.argv[2:]:\n"
+        "    path = Path(sys.argv[1]) / name\n"
+        "    if path.is_file():\n"
+        "        data = json.loads(path.read_text())\n"
+        '        data["forged"] = "yes"\n'
+        "        path.write_text(json.dumps(data))\n"
+        "PYEOF\n"
+    )
+
+
+def _forge_differential(real_python: str) -> str:
+    """Forge the sealed report in place and announce the hash a peer would write."""
+    return (
+        f"    {real_python} - \"$UPGRADE_PRIVATE_RUN_DIR\" <<'PYEOF'\n"
+        "import hashlib, json, sys\n"
+        "from pathlib import Path\n"
+        'path = Path(sys.argv[1]) / "differential.json"\n'
+        "if path.is_file():\n"
+        "    data = json.loads(path.read_text())\n"
+        '    data["projection_cases"] = 515151\n'
+        '    data["forged"] = "yes"\n'
+        "    path.write_text(json.dumps(data))\n"
+        "    digest = hashlib.sha256(path.read_bytes()).hexdigest()\n"
+        '    print("FORGED differential.json", digest, file=sys.stderr, flush=True)\n'
+        "PYEOF\n"
+    )
+
+
+def _peer_run(
+    tmp_path: Path,
+    shims: Callable[[Path], dict[str, str]],
+    *,
+    edit: tuple[str, ...] = (),
+    differential: bool = True,
+) -> tuple[dict[str, object], str]:
+    """Run the wrapper with stand-in tools and a peer; return outcome and verdict."""
+    bin_dir = _tools(tmp_path)
+    fifo = bin_dir / "release"
+    os.mkfifo(fifo)
+    mount_dir = tmp_path / "mnt"
+    mount_dir.mkdir()
+    for tool, text in shims(fifo).items():
+        shim = bin_dir / tool
+        shim.unlink()
+        shim.write_text(text, encoding="utf-8")
+        shim.chmod(0o700)
+    environment = _wrapper_env(BASE, tmp_path, bin_dir, uuid4().hex)
+    if not differential:
+        environment["UPGRADE_WAVE_H_DIFFERENTIAL"] = ""
+    plan = {
+        "argv": [str(ROOT / "ops/testing/migration_upgrade.sh"), BASE],
+        "env": environment,
+        "cwd": str(ROOT),
+        "mount_dir": str(mount_dir),
+        "fifo": str(fifo),
+        "tamper": {
+            "runner_temp": str(tmp_path),
+            "edit": [str(ROOT / "ops/testing" / name) for name in edit],
+            "canary": str(tmp_path / "canary"),
+        },
+    }
+    (tmp_path / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    helper = Path(__file__).resolve().parent / "wave_h_mid_run_mount.py"
+
+    result = subprocess.run(  # noqa: S603 - fixed helper in a private namespace
+        [
+            UNSHARE,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--propagation",
+            "shared",
+            sys.executable,
+            str(helper),
+            str(tmp_path / "plan.json"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=4 * 3600,
+    )
+
+    assert result.returncode == 0, result.stderr
+    published = tmp_path / "migration-upgrade" / "verdict.json"
+    return json.loads(result.stdout), published.read_text(encoding="utf-8")
+
+
+def _tool(name: str) -> str:
+    found = shutil.which(name)
+    assert found is not None
+    return found
+
+
+@requires_postgres
+@pytest.mark.parametrize(
+    ("forge", "passes"),
+    [
+        pytest.param(("verified.json",), False, id="attestation"),
+        pytest.param(("differential.json",), True, id="differential_report"),
+    ],
+)
+def test_a_rewrite_after_the_supervisor_read_a_file_never_reaches_the_verdict(
+    tmp_path: Path, forge: tuple[str, ...], passes: bool
+) -> None:
+    """The verdict is built from the bytes read once, not from the files again.
+
+    A rewritten attestation must stop the run (the verdict the verifier wrote no
+    longer agrees with what was read); a rewritten differential report must not
+    change a word of the published one. No seal file may exist for a peer to
+    rewrite at the barrier.
+    """
+
+    def shims(fifo: Path) -> dict[str, str]:
+        return {
+            "uv": _gate(
+                _tool("uv"),
+                fifo,
+                '"$*" == *"manage.py makemigrations"*',
+                _rewrite_attestations(forge),
+            )
+        }
+
+    outcome, published = _peer_run(tmp_path, shims)
+
+    assert "forged" not in published, published
+    assert outcome["seals"] == [], outcome["seals"]
+    assert (json.loads(published)["result"] == "PASS") is passes, published[-800:]
+
+
+@requires_postgres
+def test_a_forged_report_with_a_rewritten_seal_is_not_published(
+    tmp_path: Path,
+) -> None:
+    """The reviewer's attack on the seal: forge the report, then fix its hash.
+
+    At the verdict writer's launch the child rewrites the sealed report in
+    place; the peer rewrites the seal manifest to match, if a manifest exists
+    for it to reach. Nothing may certify the forged numbers, and the failure
+    must not publish them either.
+    """
+
+    def shims(fifo: Path) -> dict[str, str]:
+        real = _tool("python3")
+        return {
+            "python3": _gate(
+                real, fifo, '"$*" == *verified.json*', _forge_differential(real)
+            )
+        }
+
+    outcome, published = _peer_run(tmp_path, shims)
+
+    assert "FORGED differential.json" in str(outcome["output"])
+    assert "515151" not in published, published
+    assert outcome["seals"] == [], outcome["seals"]
+    assert json.loads(published)["result"] != "PASS", published[-800:]
+
+
+@requires_postgres
+def test_an_edit_of_the_launcher_and_census_in_the_checkout_never_runs(
+    tmp_path: Path,
+) -> None:
+    """The helpers that decide a verdict come from the commit, not the checkout.
+
+    The peer appends a line that creates a canary to the launcher, the policy
+    and the census in the checkout while the run is under way. Nothing the
+    supervisor executes may be the edited copy, and a run whose checkout changed
+    must not pass.
+    """
+    edited = (
+        "migration_upgrade_sandbox.py",
+        "migration_upgrade_landlock.py",
+        "migration_upgrade_custody.py",
+    )
+
+    def shims(fifo: Path) -> dict[str, str]:
+        gate = _gate(_tool("uv"), fifo, '"$*" == *"manage.py makemigrations"*')
+        return {"uv": gate}
+
+    outcome, published = _peer_run(tmp_path, shims, edit=edited)
+    output = str(outcome["output"])
+
+    assert outcome["canary"] is False, output[-3000:]
+    assert json.loads(published)["result"] != "PASS", published[-800:]
+
+
+@requires_postgres
+def test_a_python_on_the_path_never_runs_for_the_supervisor(tmp_path: Path) -> None:
+    """Every interpreter the supervisor starts is the absolute one.
+
+    A ``python3`` earlier on PATH creates a canary when it runs. A child may run
+    it (the sandbox refuses the write); the supervisor must never.
+    """
+    canary = tmp_path / "canary"
+
+    def shims(_fifo: Path) -> dict[str, str]:
+        return {
+            "python3": f'#!/bin/bash\n: > "{canary}"\nexec {_tool("python3")} "$@"\n'
+        }
+
+    _peer_run(tmp_path, shims, differential=False)
+
+    assert not canary.exists()
+
+
+@requires_postgres
+def test_the_pinned_native_verifier_never_writes_through_a_link_to_a_visible_host_file(
+    tmp_path: Path,
+) -> None:
+    """The pinned writer follows links; the target here is a file the child sees.
+
+    The earlier cases plant a link to a target that does not exist inside the
+    child, so the write fails for want of a path. Here the host file is bound
+    read-only into the sandbox: the write is refused for what it is.
+    """
+    bin_dir = _tools(tmp_path)
+    fifo = bin_dir / "release"
+    os.mkfifo(fifo)
+    mount_dir = tmp_path / "mnt"
+    mount_dir.mkdir()
+    _late_mount_shim(bin_dir, fifo, mount_dir, LATE_MOUNT_CASES["native_verifier"])
+    environment = _wrapper_env(BASE, tmp_path, bin_dir, uuid4().hex)
+    environment["UPGRADE_SANDBOX_READ_ONLY"] += os.pathsep + str(mount_dir)
+    plan = {
+        "argv": [str(ROOT / "ops/testing/migration_upgrade.sh"), BASE],
+        "env": environment,
+        "cwd": str(ROOT),
+        "mount_dir": str(mount_dir),
+        "fifo": str(fifo),
+        "secret": "secret",
+        "visible": True,
+    }
+    (tmp_path / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    helper = Path(__file__).resolve().parent / "wave_h_mid_run_mount.py"
+
+    result = subprocess.run(  # noqa: S603 - fixed helper in a private namespace
+        [
+            UNSHARE,
+            "--user",
+            "--map-root-user",
+            "--mount",
+            "--propagation",
+            "shared",
+            sys.executable,
+            str(helper),
+            str(tmp_path / "plan.json"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=4 * 3600,
+    )
+
+    assert result.returncode == 0, result.stderr
+    outcome = json.loads(result.stdout)
+    output = outcome["output"]
+    assert "PLANTED" in output, output[-3000:]
+    assert outcome["returncode"] != 0, output[-3000:]
+    assert outcome["target"] == "secret"
     _not_a_pass(tmp_path)

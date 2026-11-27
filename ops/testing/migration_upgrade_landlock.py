@@ -9,11 +9,11 @@ a planted link or a descriptor reopened through ``/proc`` all resolve to the
 same object, and the object is judged by where it sits, not by how it was named.
 
 The policy is one write root, handed over as a descriptor the wrapper already
-holds, read and execute access to the listed inputs only, and optionally TCP to
-named ports only. Everything else is refused. There is no fallback: a kernel
-without Landlock, or one too old to cover truncation and cross-directory
-renames, is refused by name so the caller can stop instead of running
-unconfined.
+holds, read and execute access to the listed inputs only, optionally TCP to
+named ports only, and no UDP at all (a fetching child may reach port 53 for name
+resolution). Everything else is refused. There is no fallback: a kernel without
+Landlock, or one too old to cover truncation, cross-directory renames and UDP,
+is refused by name so the caller can stop instead of running unconfined.
 
 This file is deliberately self-contained, with standard-library imports only,
 because the sandbox launcher embeds its source in the stub that runs inside the
@@ -26,7 +26,8 @@ import os
 import stat
 from pathlib import Path
 
-MIN_ABI = 3  # truncation and cross-directory renames are covered from ABI 3
+MIN_ABI = 10  # UDP bind and connect/send are covered from ABI 10
+DNS_PORT = 53
 SYS_CREATE_RULESET = 444
 SYS_ADD_RULE = 445
 SYS_RESTRICT_SELF = 446
@@ -54,6 +55,8 @@ IOCTL_DEV = 1 << 15  # ABI 5
 RESOLVE_UNIX = 1 << 16  # ABI 9: connecting to a pathname socket
 NET_BIND_TCP = 1 << 0  # ABI 4
 NET_CONNECT_TCP = 1 << 1  # ABI 4
+NET_BIND_UDP = 1 << 2  # ABI 10
+NET_CONNECT_SEND_UDP = 1 << 3  # ABI 10
 SCOPE_ABSTRACT_UNIX = 1 << 0  # ABI 6
 SCOPE_SIGNAL = 1 << 1  # ABI 6
 
@@ -140,6 +143,14 @@ def _rule_path(libc: ctypes.CDLL, ruleset: int, target: int | str, access: int) 
             os.close(held)
 
 
+def _rule_net(libc: ctypes.CDLL, ruleset: int, access: int, port: int) -> None:
+    allowed = _NetPort(access, port)
+    _check(
+        libc.syscall(SYS_ADD_RULE, ruleset, RULE_NET_PORT, ctypes.byref(allowed), 0),
+        "add_net_rule",
+    )
+
+
 def apply(
     write_roots: list[int],
     read_paths: list[str],
@@ -151,16 +162,15 @@ def apply(
     ``write_roots`` are descriptors of directories that may be written, created
     in, renamed within and removed from. ``read_paths`` may be read and
     executed. ``/dev`` is writable as a device directory only. With
-    ``connect_ports`` TCP may connect to those ports and to nothing else.
+    ``connect_ports`` TCP may connect to those ports and to nothing else; without
+    it TCP is unrestricted and UDP may only reach port 53. UDP is otherwise
+    refused in both modes.
     """
     found = libc or _libc()
     version = abi(found)
-    net = 0
-    if connect_ports is not None and version >= 4:  # noqa: PLR2004
-        net = NET_BIND_TCP | NET_CONNECT_TCP
-    elif connect_ports is not None:
-        message = f"landlock_network_rules_unavailable: abi {version} < 4"
-        raise LandlockUnavailableError(errno.ENOSYS, message)
+    net = NET_BIND_UDP | NET_CONNECT_SEND_UDP
+    if connect_ports is not None:
+        net |= NET_BIND_TCP | NET_CONNECT_TCP
     scoped = SCOPE_ABSTRACT_UNIX | SCOPE_SIGNAL if version >= 6 else 0  # noqa: PLR2004
     attribute = _RulesetAttr(_filesystem_rights(version), net, scoped)
     ruleset = found.syscall(
@@ -184,13 +194,12 @@ def apply(
             devices = WRITE_FILE | TRUNCATE | IOCTL_DEV | READS
             _rule_path(found, ruleset, SYSTEM_DEVICES, devices)
         for port in connect_ports or []:
-            allowed = _NetPort(NET_CONNECT_TCP, port)
-            _check(
-                found.syscall(
-                    SYS_ADD_RULE, ruleset, RULE_NET_PORT, ctypes.byref(allowed), 0
-                ),
-                "add_net_rule",
-            )
+            _rule_net(found, ruleset, NET_CONNECT_TCP, port)
+        if connect_ports is None:
+            # Name resolution only. Both UDP rights are handled, so the resolver's
+            # automatic ephemeral source port needs BIND_UDP on port 0.
+            _rule_net(found, ruleset, NET_CONNECT_SEND_UDP, DNS_PORT)
+            _rule_net(found, ruleset, NET_BIND_UDP, 0)
         _check(found.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0), "no_new_privs")
         _check(found.syscall(SYS_RESTRICT_SELF, ruleset, 0), "restrict_self")
     finally:

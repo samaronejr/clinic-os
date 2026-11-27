@@ -506,79 +506,23 @@ def test_a_child_is_given_no_host_service_to_delegate_to(
     assert "CONNECT PermissionError" in result.stdout, result.stdout
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "A same-user process that enters the sandbox's namespaces can mount a "
-        "foreign directory under the run directory, and a path-based policy then "
-        "counts it as inside. Only a different principal, a protected runner, "
-        "closes this; the claim records it."
-    ),
-)
-def test_a_same_user_process_cannot_mount_a_foreign_directory_into_the_run(
-    run: Run, tmp_path: Path
-) -> None:
-    victim_directory = tmp_path / "victim-directory"
-    victim_directory.mkdir()
-    victim = victim_directory / "victim"
-    victim.write_bytes(b"ORIGINAL")
-    (run.root / "x").mkdir()
+def test_a_sandboxed_child_cannot_send_a_datagram_to_a_host_listener(run: Run) -> None:
     code = (
-        "import sys\n"
-        "print('READY', flush=True)\n"
-        "sys.stdin.readline()\n"
+        "import errno, socket, sys\n"
+        "udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
         "try:\n"
-        "    open(sys.argv[1], 'w').write('PWN')\n"
+        "    udp.sendto(b'x', ('127.0.0.1', int(sys.argv[1])))\n"
+        "    print('SENT')\n"
         "except OSError as error:\n"
-        "    print('REFUSED', error.errno, flush=True)\n"
+        "    print('REFUSED', errno.errorcode[error.errno])\n"
     )
-    environment = {
-        **os.environ,
-        "UPGRADE_SANDBOX_READ_ONLY": os.pathsep.join(
-            [READ_ONLY_ENV["UPGRADE_SANDBOX_READ_ONLY"], str(tmp_path)]
-        ),
-        "UPGRADE_SANDBOX_STDIN": "pipe",
-    }
-    command = [
-        sys.executable,
-        str(SANDBOX),
-        str(run.pid),
-        str(run.run_fd),
-        NAME,
-        "--",
-        sys.executable,
-        "-I",
-        "-c",
-        code,
-        f"{INSIDE}/x/victim",
-    ]
-    with subprocess.Popen(  # noqa: S603 - fixed launcher under test
-        command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-        cwd="/usr",
-        pass_fds=(run.run_fd,),
-        env=environment,
-    ) as child:
-        assert child.stdout is not None
-        assert child.stdin is not None
-        assert child.stdout.readline().strip() == "READY"
-        attack = subprocess.run(  # noqa: S603 - fixed helper acting as the peer
-            [
-                sys.executable,
-                str(ESCAPE_HELPER),
-                str(child.pid),
-                f"{INSIDE}/x",
-                str(victim_directory),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert attack.stdout.strip() == "CLEARED", attack.stdout + attack.stderr
-        child.stdin.write("GO\n")
-        child.stdin.close()
-        child.stdout.read()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.settimeout(0)
 
-    assert victim.read_bytes() == b"ORIGINAL"
+        result = run.python(code, str(listener.getsockname()[1]))
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "REFUSED EACCES"
+        with pytest.raises(BlockingIOError):
+            listener.recv(1)

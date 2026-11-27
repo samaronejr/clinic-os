@@ -8,6 +8,7 @@ import re
 import secrets
 import shutil
 import stat
+import subprocess
 import sys
 import tarfile
 from dataclasses import dataclass, field
@@ -17,6 +18,9 @@ from typing import IO
 PRIVATE_MODE = 0o700
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+HELPER_TREES = ("ops/testing", "ops/db")
+RECORD_SEPARATOR = "\x1e"
 
 
 def create(name: str) -> None:
@@ -480,6 +484,218 @@ def write_replacing(path: Path, text: str) -> None:
     temporary.replace(path)
 
 
+def capture_file(root: int, expected: str, name: str) -> bytes:
+    """Read one run file exactly once, through the held run directory.
+
+    The caller keeps the bytes; nothing that decides a verdict is read again by
+    name afterwards.
+    """
+    _require_directory(root, expected)
+    _require_child_name(name)
+    held = os.open(name, READ_FLAGS, dir_fd=root)
+    try:
+        found = os.fstat(held)
+        if (
+            not stat.S_ISREG(found.st_mode)
+            or found.st_nlink != 1
+            or found.st_dev != os.fstat(root).st_dev
+        ):
+            message = f"private_capture_foreign_entry: {name}"
+            raise RuntimeError(message)
+        chunks = []
+        while block := os.read(held, 1 << 20):
+            chunks.append(block)
+        return b"".join(chunks)
+    finally:
+        os.close(held)
+
+
+def _git_object(project: str, kind: str, oid: str) -> bytes:
+    """Read an object and prove its bytes hash to the name it was asked by."""
+    git = shutil.which("git")
+    if git is None:
+        message = "helper_seal_git_missing"
+        raise RuntimeError(message)
+    data = subprocess.run(  # noqa: S603 - fixed git query
+        [git, "-C", project, "cat-file", kind, oid],
+        capture_output=True,
+        check=True,
+    ).stdout
+    header = f"{kind} {len(data)}".encode() + b"\0"
+    if hashlib.sha1(header + data, usedforsecurity=False).hexdigest() != oid:
+        message = f"helper_seal_object_mismatch: {oid}"
+        raise RuntimeError(message)
+    return data
+
+
+def _tree_entries(data: bytes) -> list[tuple[str, str, str]]:
+    entries = []
+    position = 0
+    while position < len(data):
+        space = data.index(b" ", position)
+        end = data.index(b"\0", space)
+        mode = data[position:space].decode()
+        name = data[space + 1 : end].decode()
+        entries.append((mode, name, data[end + 1 : end + 21].hex()))
+        position = end + 21
+    return entries
+
+
+def _write_tree(project: str, oid: str, destination: Path) -> None:
+    destination.mkdir(mode=PRIVATE_MODE, parents=True)
+    for mode, name, child in _tree_entries(_git_object(project, "tree", oid)):
+        _require_child_name(name)
+        if mode == "40000":
+            _write_tree(project, child, destination / name)
+        elif mode in ("100644", "100755"):
+            flags = FILE_FLAGS
+            held = os.open(
+                destination / name, flags, 0o500 if mode == "100755" else 0o400
+            )
+            with os.fdopen(held, "wb") as output:
+                output.write(_git_object(project, "blob", child))
+        else:
+            message = f"helper_seal_unsupported_entry: {name}"
+            raise RuntimeError(message)
+
+
+def seal_helpers(project: str, commit: str, target: str) -> None:
+    """Extract the harness helpers of ``commit`` into a fresh directory.
+
+    Every object on the way from the commit to each file is checked against its
+    own name, so the copy is the committed bytes whatever the checkout now holds.
+    """
+    commit_data = _git_object(project, "commit", commit)
+    first = commit_data.split(b"\n", 1)[0]
+    if not first.startswith(b"tree "):
+        message = "helper_seal_commit_unreadable"
+        raise RuntimeError(message)
+    top = first[5:].decode()
+    Path(target).mkdir(mode=PRIVATE_MODE)
+    for relative in HELPER_TREES:
+        oid = top
+        for part in PurePosixPath(relative).parts:
+            found = [
+                child
+                for mode, name, child in _tree_entries(
+                    _git_object(project, "tree", oid)
+                )
+                if name == part and mode == "40000"
+            ]
+            if not found:
+                message = f"helper_seal_missing: {relative}"
+                raise RuntimeError(message)
+            oid = found[0]
+        _write_tree(project, oid, Path(target) / relative)
+
+
+def _file_sha256(path: Path) -> str | None:
+    try:
+        held = os.open(path, READ_FLAGS)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(held).st_mode):
+            return None
+        digest = hashlib.sha256()
+        while block := os.read(held, 1 << 20):
+            digest.update(block)
+        return digest.hexdigest()
+    finally:
+        os.close(held)
+
+
+def verify_helpers(project: str, sealed: str) -> None:
+    """Refuse a checkout whose tracked helper differs from the sealed copy."""
+    for tree in HELPER_TREES:
+        for found in sorted((Path(sealed) / tree).rglob("*")):
+            if found.is_dir() or "__pycache__" in found.parts:
+                continue
+            relative = found.relative_to(sealed)
+            if _file_sha256(Path(project) / relative) != _file_sha256(found):
+                message = f"helpers_changed: {relative}"
+                raise RuntimeError(message)
+
+
+def publish_verdict(arguments: list[str], held: str) -> None:
+    """Publish a verdict built from the bytes the supervisor already holds.
+
+    ``held`` is the verdict attestation and the differential report, in that
+    order, split by a record separator; either may be empty. No run file is read.
+    """
+    (
+        root,
+        base,
+        database,
+        result,
+        stage,
+        run_id,
+        commit,
+        started,
+        differential,
+        nonce,
+    ) = arguments
+    attestation, _, report = held.partition(RECORD_SEPARATOR)
+    target = Path(root) / "verdict.json"
+    details = (
+        json.loads(report)
+        if report.strip()
+        else {
+            "result": "FAIL",
+            "projection_cases": 0,
+            "probe_window_cases": 0,
+            "differences": [],
+            "base_reject_lane_pass_pairs": [],
+        }
+    )
+    if result == "PASS":
+        verdict = json.loads(attestation)
+        if differential and details.get("result") != "PASS":
+            message = "differential passing report is missing"
+            raise RuntimeError(message)
+    else:
+        verdict = {
+            "schema_version": 1,
+            "result": "FAIL",
+            "base_sha": base,
+            "upgrade_db": database,
+            "reason": stage,
+        }
+    if differential:
+        verdict["differential"] = details
+    verdict.update(
+        run_id=run_id, run_nonce=nonce, commit_sha=commit, started_at=started
+    )
+    pending = target.with_name(f".verdict-{secrets.token_hex(16)}.pending")
+    with pending.open("x", encoding="utf-8") as stream:
+        identity = os.fstat(stream.fileno())
+        try:
+            stream.write(json.dumps(verdict) + "\n")
+            stream.flush()
+            _require_staged(pending, identity)
+            pending.replace(target)
+        except BaseException:
+            try:
+                if os.path.samestat(pending.lstat(), identity):
+                    with pending.open(encoding="utf-8") as receipt:
+                        owned = os.path.samestat(os.fstat(receipt.fileno()), identity)
+                        if (
+                            owned
+                            and json.load(receipt).get("run_nonce") == nonce
+                            and os.path.samestat(pending.lstat(), identity)
+                        ):
+                            pending.unlink()
+            except (OSError, ValueError):
+                pass
+            raise
+
+
+def _require_staged(pending: Path, identity: os.stat_result) -> None:
+    if not os.path.samestat(pending.lstat(), identity):
+        message = "verdict staging file was replaced"
+        raise RuntimeError(message)
+
+
 def _check_command(arguments: list[str]) -> None:
     """Census the run tree: created children, recorded links, allowed inodes."""
     extra = ("link:", "inode:")
@@ -510,29 +726,46 @@ def _inode_command(arguments: list[str]) -> None:
 
 
 def _snapshot_command(arguments: list[str]) -> None:
-    """Record the accepted tree: custody.py snapshot RUN_FD IDENTITY MANIFEST."""
-    recorded = snapshot(int(arguments[1]), arguments[2])
-    target = Path(arguments[3])
-    # Exclusive create, then an atomic rename: a link planted at either name is
-    # replaced or refused, never written through.
-    pending = target.with_name(target.name + f".{os.getpid()}.new")
-    with pending.open("x", encoding="utf-8") as output:
-        output.write(json.dumps(recorded))
-    pending.replace(target)
+    """Print the accepted tree's record: custody.py snapshot RUN_FD IDENTITY.
+
+    The caller holds the record in memory; no file carries it.
+    """
+    sys.stdout.write(json.dumps(snapshot(int(arguments[1]), arguments[2])))
 
 
 def _unchanged_command(arguments: list[str]) -> None:
-    """Compare the tree to a record, allowing the named new entries."""
-    recorded = json.loads(Path(arguments[3]).read_text(encoding="utf-8"))
+    """Compare the tree to the record on stdin, allowing the named new entries."""
+    recorded = json.loads(sys.stdin.read())
     unchanged_since(
-        recorded, snapshot(int(arguments[1]), arguments[2]), frozenset(arguments[4:])
+        recorded, snapshot(int(arguments[1]), arguments[2]), frozenset(arguments[3:])
     )
+
+
+def _capture_command(arguments: list[str]) -> None:
+    """Print one run file, read once: custody.py capture RUN_FD IDENTITY NAME."""
+    sys.stdout.buffer.write(capture_file(int(arguments[1]), arguments[2], arguments[3]))
+
+
+def _publish_command(arguments: list[str]) -> None:
+    publish_verdict(arguments[1:], sys.stdin.read())
+
+
+def _seal_helpers_command(arguments: list[str]) -> None:
+    seal_helpers(arguments[1], arguments[2], arguments[3])
+
+
+def _verify_helpers_command(arguments: list[str]) -> None:
+    verify_helpers(arguments[1], arguments[2])
 
 
 TOOLS = {
     "check": _check_command,
     "snapshot": _snapshot_command,
     "unchanged": _unchanged_command,
+    "capture": _capture_command,
+    "publish": _publish_command,
+    "seal-helpers": _seal_helpers_command,
+    "verify-helpers": _verify_helpers_command,
     "interpreter": _interpreter_command,
     "inode": _inode_command,
 }

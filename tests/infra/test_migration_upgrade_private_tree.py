@@ -1,6 +1,7 @@
 """Nothing the rehearsal creates in its run directory may follow or reuse a name."""
 
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -496,3 +497,173 @@ def test_a_mount_visible_to_the_census_under_the_run_is_refused(
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "private_tree_foreign_mount: mnt"
+
+
+def _committed(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    (repo / "ops/testing").mkdir(parents=True)
+    (repo / "ops/db").mkdir()
+    (repo / "ops/testing/helper.py").write_text("print('committed')\n")
+    (repo / "ops/testing/run.sh").write_text("#!/bin/sh\n")
+    (repo / "ops/testing/run.sh").chmod(0o755)
+    (repo / "ops/db/bootstrap.sql").write_text("SELECT 1;\n")
+    git = shutil.which("git")
+    assert git is not None
+    commit_arguments = ["-c", "commit.gpgsign=false", "-c", "user.name=t"]
+    for arguments in (
+        ["init", "-q"],
+        ["add", "-A"],
+        [*commit_arguments, "-c", "user.email=t@example.invalid", "commit", "-qm", "c"],
+    ):
+        subprocess.run([git, "-C", str(repo), *arguments], check=True)  # noqa: S603
+    head = subprocess.run(  # noqa: S603
+        [git, "-C", str(repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return repo, head.stdout.strip()
+
+
+def test_sealed_helpers_are_the_committed_bytes_whatever_the_checkout_holds(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _committed(tmp_path)
+    helper = repo / "ops/testing/helper.py"
+    helper.write_text("print('edited')\n")
+    sealed = tmp_path / "sealed"
+
+    custody.seal_helpers(str(repo), commit, str(sealed))
+
+    assert (sealed / "ops/testing/helper.py").read_text() == "print('committed')\n"
+    assert (sealed / "ops/db/bootstrap.sql").read_text() == "SELECT 1;\n"
+    assert os.access(sealed / "ops/testing/run.sh", os.X_OK)
+    with pytest.raises(RuntimeError, match=r"helpers_changed: ops/testing/helper\.py"):
+        custody.verify_helpers(str(repo), str(sealed))
+    helper.write_text("print('committed')\n")
+    custody.verify_helpers(str(repo), str(sealed))
+
+
+def test_a_helper_swapped_for_a_link_after_sealing_is_refused(tmp_path: Path) -> None:
+    repo, commit = _committed(tmp_path)
+    sealed = tmp_path / "sealed"
+    custody.seal_helpers(str(repo), commit, str(sealed))
+    helper = repo / "ops/testing/helper.py"
+    copy = tmp_path / "identical-copy.py"
+    copy.write_text("print('committed')\n")
+    helper.unlink()
+    helper.symlink_to(copy)
+
+    with pytest.raises(RuntimeError, match=r"helpers_changed: ops/testing/helper\.py"):
+        custody.verify_helpers(str(repo), str(sealed))
+
+
+def test_an_object_that_does_not_hash_to_its_name_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, commit = _committed(tmp_path)
+    real = subprocess.run
+
+    def forged(
+        command: list[str], **options: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        if command[-2] == "blob":
+            return subprocess.CompletedProcess(command, 0, stdout=b"forged")
+        return real(command, **options)  # type: ignore[call-overload,no-any-return]
+
+    monkeypatch.setattr(subprocess, "run", forged)
+
+    with pytest.raises(RuntimeError, match="helper_seal_object_mismatch"):
+        custody.seal_helpers(str(repo), commit, str(tmp_path / "sealed"))
+
+
+def test_capture_reads_one_regular_file_exactly(run: tuple[Path, int, str]) -> None:
+    root, descriptor, identity = run
+    (root / "verified.json").write_bytes(b'{"a": 1}\n')
+
+    assert custody.capture_file(descriptor, identity, "verified.json") == b'{"a": 1}\n'
+
+
+def test_capture_refuses_a_link_and_a_second_name(
+    run: tuple[Path, int, str], foreign: tuple[Path, Path]
+) -> None:
+    root, descriptor, identity = run
+    _, marker = foreign
+    (root / "linked.json").symlink_to(marker)
+    (root / "hard.json").hardlink_to(marker)
+
+    with pytest.raises(OSError, match="Too many levels of symbolic links"):
+        custody.capture_file(descriptor, identity, "linked.json")
+    with pytest.raises(
+        RuntimeError, match=r"private_capture_foreign_entry: hard\.json"
+    ):
+        custody.capture_file(descriptor, identity, "hard.json")
+
+
+def _publish(
+    directory: Path, result: str, held: str, differential: str = ""
+) -> dict[str, object]:
+    custody.publish_verdict(
+        [
+            str(directory),
+            "b" * 40,
+            "db",
+            result,
+            "stage",
+            "run1",
+            "c" * 40,
+            "1.5",
+            differential,
+            "n" * 32,
+        ],
+        held,
+    )
+    verdict: dict[str, object] = json.loads(
+        (directory / "verdict.json").read_text(encoding="utf-8")
+    )
+    return verdict
+
+
+ATTESTATION = json.dumps(
+    {"schema_version": 1, "result": "PASS", "base_sha": "b" * 40, "upgrade_db": "db"}
+)
+FAILED_REPORT = json.dumps(
+    {
+        "result": "FAIL",
+        "projection_cases": 5,
+        "probe_window_cases": 2,
+        "differences": ["x"],
+        "base_reject_lane_pass_pairs": [],
+    }
+)
+
+
+def test_a_pass_is_built_from_the_held_bytes_alone(tmp_path: Path) -> None:
+    published = tmp_path / "published"
+    published.mkdir()
+
+    verdict = _publish(published, "PASS", ATTESTATION + custody.RECORD_SEPARATOR)
+
+    assert verdict["result"] == "PASS"
+    assert verdict["run_nonce"] == "n" * 32
+    assert "differential" not in verdict
+    assert [entry.name for entry in published.iterdir()] == ["verdict.json"]
+
+
+def test_a_fail_names_its_stage_and_carries_the_held_differential(
+    tmp_path: Path,
+) -> None:
+    held = custody.RECORD_SEPARATOR + FAILED_REPORT
+
+    verdict = _publish(tmp_path, "FAIL", held, differential="1")
+
+    assert verdict["result"] == "FAIL"
+    assert verdict["reason"] == "stage"
+    assert verdict["differential"] == json.loads(FAILED_REPORT)
+
+
+def test_a_pass_without_a_passing_differential_is_refused(tmp_path: Path) -> None:
+    held = ATTESTATION + custody.RECORD_SEPARATOR + FAILED_REPORT
+
+    with pytest.raises(RuntimeError, match="differential passing report is missing"):
+        _publish(tmp_path, "PASS", held, differential="1")
