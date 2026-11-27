@@ -72,6 +72,7 @@ from ops.testing.isolation_common import (
     utc_now,
     write_no_replace,
 )
+from ops.testing.pidfd_preflight import PidfdUnavailableError, require_pidfd_support
 from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
 from ops.testing.sentinel_runtime import (
@@ -1933,6 +1934,7 @@ def _browser(arguments: list[str]) -> int:
     engine = _resolve_engine(options.get("--engine"))
     display = DisplayRequest(options.get("--theme"), options.get("--density"))
     display.environment()  # refuse an unknown value before any provisioning
+    require_pidfd_support()
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
     run_root = _run_root(options.get("--run-root"), artifact_root)
@@ -1957,6 +1959,7 @@ def _browser(arguments: list[str]) -> int:
 
 def _ci(arguments: list[str]) -> int:
     options = _options(arguments, _CI_OPTIONS)
+    require_pidfd_support()
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
     run_root = _run_root(options.get("--run-root"), artifact_root)
@@ -1985,7 +1988,13 @@ def main(argv: list[str] | None = None) -> int:
     except RenewalInterruptError as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 130
-    except (IsolationError, OSError, SupervisorError, ValueError) as error:
+    except (
+        IsolationError,
+        OSError,
+        PidfdUnavailableError,
+        SupervisorError,
+        ValueError,
+    ) as error:
         sys.stderr.write(f"renewal-runner: {error}\n")
         return 2
     finally:

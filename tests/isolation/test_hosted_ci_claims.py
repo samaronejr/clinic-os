@@ -71,6 +71,13 @@ def test_ci_browser_contract_dispatches_image_and_renewal_suites(
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
+        "renewal:run",
+        "renewal:--frozen",
+        "renewal:--no-sync",
+        "renewal:--no-env-file",
+        "renewal:python",
+        "renewal:-m",
+        "renewal:ops.testing.pidfd_preflight",
         "legacy:probe",
         "legacy:--require-suite",
         "legacy:availability",

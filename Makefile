@@ -207,6 +207,7 @@ restore-rehearsal:
 		--attachment-root "$${RESTORE_ATTACHMENT_ROOT:?}"
 
 ci-browser-contract:
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.pidfd_preflight
 	@actual="$$(sha256sum ops/testing/ci-required-browser-suites.txt | cut -d' ' -f1)"; \
 		test "$${actual}" = 4c6e14cdf93690d1c38bba4b5a7c36cf657bf795bc3a003a17ad5bc3e67067c5
 	@set --; previous=''; \
@@ -238,6 +239,7 @@ current-source-snapshot:
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
 	$(UV) sync --locked --all-groups
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.pidfd_preflight
 	@$(MAKE) db-bootstrap
 	@$(MAKE) migrate
 	@$(MAKE) db-posture

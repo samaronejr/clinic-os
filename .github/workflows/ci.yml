@@ -7,6 +7,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Keep the frozen uv binary; its bundled CPython builds lack Linux pidfd APIs.
+  UV_PYTHON_DOWNLOADS_JSON_URL: ${{ github.workspace }}/ops/testing/ci-python-downloads.json
+  UV_PYTHON_CPYTHON_BUILD: "20260718"
+  UV_PYTHON_PREFERENCE: only-managed
+
 jobs:
   test:
     name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/4
@@ -33,6 +39,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
@@ -133,6 +141,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
@@ -208,6 +218,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Bind task-owned evidence root
         run: ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
       - name: Install PDF inspection prerequisites
@@ -276,6 +288,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
@@ -329,6 +343,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
