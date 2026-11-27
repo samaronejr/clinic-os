@@ -33,7 +33,7 @@ def test_a_kernel_without_landlock_is_refused_by_name() -> None:
         landlock.apply([], [], libc=_Kernel(-1, errno.EOPNOTSUPP))  # type: ignore[arg-type]
 
 
-def test_a_kernel_too_old_to_cover_truncation_is_refused_by_name() -> None:
+def test_a_kernel_too_old_to_cover_udp_is_refused_by_name() -> None:
     with pytest.raises(landlock.LandlockUnavailableError, match="landlock_abi_too_old"):
         landlock.abi(_Kernel(landlock.MIN_ABI - 1))  # type: ignore[arg-type]
 
@@ -164,3 +164,91 @@ def test_tcp_reaches_only_the_named_port() -> None:
     assert result.stdout.splitlines() == ["allowed CONNECTED", "other EACCES"], (
         result.stdout + result.stderr
     )
+
+
+UDP_PROBE = textwrap.dedent(
+    """
+    import errno, os, socket, sys
+    sys.path.insert(0, os.path.dirname(sys.argv[1]))
+    import migration_upgrade_landlock as landlock
+
+    mode, datagram_port, tcp_port = sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+    landlock.apply(
+        [],
+        ["/usr", "/lib", "/lib64", "/etc", sys.prefix],
+        [tcp_port] if mode == "ports" else None,
+    )
+
+    def attempt(label, action):
+        try:
+            action()
+            print(label, "ALLOWED")
+        except OSError as error:
+            print(label, errno.errorcode.get(error.errno, error.errno))
+
+    def datagram(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+            udp.sendto(b"x", ("127.0.0.1", port))
+
+    def bind():
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+            udp.bind(("127.0.0.1", 0))
+
+    def connect():
+        socket.create_connection(("127.0.0.1", tcp_port), timeout=5).close()
+
+    attempt("send-host", lambda: datagram(datagram_port))
+    attempt("send-dns", lambda: datagram(53))
+    attempt("bind", bind)
+    attempt("resolve", lambda: socket.getaddrinfo("localhost", tcp_port))
+    attempt("tcp", connect)
+    """
+)
+
+
+def _probe_udp(mode: str) -> dict[str, str]:
+    """Run the confined probe; the host listener must have received nothing."""
+    with (
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener,
+        socket.socket() as server,
+    ):
+        listener.bind(("127.0.0.1", 0))
+        listener.settimeout(0)
+        server.bind(("127.0.0.1", 0))
+        server.listen(4)
+        result = subprocess.run(  # noqa: S603 - fixed probe in a throwaway process
+            [
+                "/usr/bin/python3",
+                "-c",
+                UDP_PROBE,
+                str(MODULE),
+                mode,
+                str(listener.getsockname()[1]),
+                str(server.getsockname()[1]),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        with pytest.raises(BlockingIOError):
+            listener.recv(1)
+    return dict(line.split(" ", 1) for line in result.stdout.splitlines())
+
+
+def test_no_datagram_is_sent_bound_or_connected_while_tcp_ports_are_named() -> None:
+    assert _probe_udp("ports") == {
+        "send-host": "EACCES",
+        "send-dns": "EACCES",
+        "bind": "EACCES",
+        "resolve": "ALLOWED",
+        "tcp": "ALLOWED",
+    }
+
+
+def test_a_fetching_child_reaches_only_the_dns_port_over_udp() -> None:
+    seen = _probe_udp("open")
+
+    assert seen["send-host"] == "EACCES"
+    assert seen["send-dns"] == "ALLOWED"
+    assert seen["tcp"] == "ALLOWED"

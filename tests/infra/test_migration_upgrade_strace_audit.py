@@ -187,28 +187,11 @@ def test_a_write_refused_by_landlock_is_counted_as_blocked() -> None:
     assert report.counts["blocked"] == 1
 
 
-SEAL_NAME = "migration-upgrade-seal." + "b" * 32
-
-
-def test_the_supervisors_own_seal_manifest_is_not_a_foreign_write() -> None:
+def test_a_file_named_like_the_old_seal_is_a_foreign_write() -> None:
+    """No seal file exists any more: a write to that name is not the supervisor's."""
+    name = "migration-upgrade-seal." + "b" * 32
     report = _audit(
-        f'1 openat({CWD}, "/runner/{SEAL_NAME}.4242.new", O_WRONLY|O_CREAT, 0600)'
-        f" = 9</runner/{SEAL_NAME}.4242.new>",
-        f'1 rename("/runner/{SEAL_NAME}.4242.new", "/runner/{SEAL_NAME}") = 0',
+        f'1 openat({CWD}, "/runner/{name}", O_WRONLY|O_CREAT, 0600) = 9</runner/{name}>'
     )
 
-    assert report.clean, report.failures
-
-
-def test_a_look_alike_of_the_seal_name_is_still_a_foreign_write() -> None:
-    for name in (
-        "migration-upgrade-seal.not-hex",
-        f"{SEAL_NAME}.extra",
-        f"{SEAL_NAME}.4242.new.more",
-    ):
-        report = _audit(
-            f'1 openat({CWD}, "/runner/{name}", O_WRONLY|O_CREAT, 0600)'
-            f" = 9</runner/{name}>"
-        )
-
-        assert not report.clean, name
+    assert not report.clean

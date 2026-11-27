@@ -58,7 +58,12 @@ psql_super() {
 # Cleanup is armed before any resource exists so every failure path drops
 # only what this run created; the original exit status is preserved.
 db_created=0
-seal_manifest=""
+sealed_tree=""
+sealed_root=""
+helpers=""
+held_verified=""
+held_verdict=""
+held_differential=""
 secret_dir=""
 run_name=""
 run_fd=""
@@ -96,12 +101,12 @@ sandboxed() {
     if [[ "${UPGRADE_SANDBOX_NETWORK:-}" != open ]]; then
         network+=("UPGRADE_SANDBOX_CONNECT_PORTS=$sandbox_db_port")
     fi
-    "${network[@]}" python3 -I "$project_root/ops/testing/migration_upgrade_sandbox.py" \
+    "${network[@]}" /usr/bin/python3 -B -I "$helpers/migration_upgrade_sandbox.py" \
         "$$" "${run_fd:--}" "${run_name:--}" "${sandbox_entries[@]}" -- "$@"
 }
 
 write_private_key() {
-    sandboxed python3 "$project_root/ops/testing/migration_upgrade_kek.py" "${1:-}"
+    UPGRADE_SANDBOX_STDIN=pipe sandboxed python3 - "${1:-}" < "$helpers/migration_upgrade_kek.py"
 }
 
 require_run_identity() {
@@ -112,12 +117,12 @@ require_run_identity() {
 }
 
 unlink_private_child() {
-    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+    /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
         unlink "$run_fd" "$run_identity" "$1" "$2"
 }
 
 mkdir_private_child() {
-    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+    /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
         mkdir "$run_fd" "$run_identity" "$@"
 }
 
@@ -152,15 +157,15 @@ guard_private_tree() {
         entry_list+=("link:$entry_name"$'\t'"${run_links[$entry_name]}")
     done
     entry_list+=("${allowed_inodes[@]}")
-    if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+    if ! /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
         check "$run_fd" "$run_identity" "${entry_list[@]}"; then
         setup_detail=private_tree_foreign_entry
         exit 1
     fi
-    # Seal what this stage left, hashed, from outside every child.
-    seal_manifest="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/migration-upgrade-seal.$run_nonce"
-    if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
-        snapshot "$run_fd" "$run_identity" "$seal_manifest"; then
+    # Seal what this stage left, hashed, from outside every child. The seal is
+    # held in this process; no file carries it.
+    if ! sealed_tree="$(/usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
+        snapshot "$run_fd" "$run_identity")"; then
         setup_detail=private_tree_foreign_entry
         exit 1
     fi
@@ -169,9 +174,28 @@ guard_private_tree() {
 # Before PASS the tree must be byte-for-byte what the last stage sealed, plus
 # the verdict the supervisor's writer produced and nothing else.
 verify_sealed_tree() {
-    if ! python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
-        unchanged "$run_fd" "$run_identity" "$seal_manifest" verdict.json; then
+    if ! printf '%s' "$sealed_tree" |
+        /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
+            unchanged "$run_fd" "$run_identity" verdict.json; then
         setup_detail=private_tree_changed
+        exit 1
+    fi
+}
+
+# Read one run file once, through the held run directory, into a variable. The
+# trailing marker keeps the exact bytes through command substitution.
+capture_attestation() {
+    local captured
+    captured="$(/usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
+        capture "$run_fd" "$run_identity" "$1" && printf x)" || return 1
+    printf -v "$2" '%s' "${captured%x}"
+}
+
+# The harness the run executed must still be the harness that was sealed.
+verify_sealed_helpers() {
+    if ! /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
+        verify-helpers "$project_root" "$sealed_root"; then
+        setup_detail=helpers_changed
         exit 1
     fi
 }
@@ -243,67 +267,18 @@ validate_root() {
     [[ ! -L "$work_root" ]] || return 1
 }
 
+# A verdict is built only from bytes this process read once and still holds.
 publish_verdict() {
-    python3 - "$work_root" "$base_sha" "$upgrade_db" "$1" \
-        "$differential_stage" "$differential_report" "$run_id" "$commit_sha" \
-        "$started_at" "$secret_dir/verdict.json" "$differential" "$run_nonce" <<'PYEOF'
-import json
-import os
-import sys
-from pathlib import Path
-from uuid import uuid4
-
-root, base, db, result, stage, report, run_id, commit, started, attestation, differential, nonce = sys.argv[1:]
-target = Path(root) / "verdict.json"
-comparison = Path(report)
-details = json.loads(comparison.read_text()) if comparison.is_file() else {
-    "result": "FAIL",
-    "projection_cases": 0,
-    "probe_window_cases": 0,
-    "differences": [],
-    "base_reject_lane_pass_pairs": [],
-}
-if result == "PASS":
-    verdict = json.loads(Path(attestation).read_text())
-    if differential and details.get("result") != "PASS":
-        raise RuntimeError("differential passing report is missing")
-else:
-    verdict = {"schema_version": 1, "result": "FAIL", "base_sha": base, "upgrade_db": db}
-    verdict["reason"] = stage
-if differential:
-    verdict["differential"] = details
-verdict.update(run_id=run_id, run_nonce=nonce, commit_sha=commit, started_at=started)
-pending = target.with_name(f".verdict-{uuid4().hex}.pending")
-with pending.open("x", encoding="utf-8") as stream:
-    identity = os.fstat(stream.fileno())
-
-    def still_owned():
-        return os.path.samestat(pending.lstat(), identity)
-
-    try:
-        stream.write(json.dumps(verdict) + "\n")
-        stream.flush()
-        if not still_owned():
-            raise RuntimeError("verdict staging file was replaced")
-        pending.replace(target)
-    except BaseException:
-        try:
-            if still_owned():
-                with pending.open(encoding="utf-8") as receipt:
-                    owned_receipt = os.path.samestat(os.fstat(receipt.fileno()), identity)
-                    if owned_receipt and json.load(receipt).get("run_nonce") == nonce and still_owned():
-                        pending.unlink()
-        except (OSError, ValueError):
-            pass
-        raise
-PYEOF
+    printf '%s\x1e%s' "$held_verdict" "$held_differential" |
+        /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" publish \
+            "$work_root" "$base_sha" "$upgrade_db" "$1" "$differential_stage" \
+            "$run_id" "$commit_sha" "$started_at" "$differential" "$run_nonce"
 }
 
 cleanup() {
     rc=$?
     trap - EXIT ERR
     trap '' TERM INT HUP
-    [[ -z "${seal_manifest:-}" ]] || rm -f -- "$seal_manifest"
     if [ "$rc" != 0 ]; then
         echo "migration-upgrade: FAIL / $differential_stage${setup_detail:+: $setup_detail} (run $run_id${run_nonce:+, nonce $run_nonce})" >&2
         if [ "$differential_stage" = interrupted ] && [ "$running_published" = 0 ] &&
@@ -439,8 +414,9 @@ umask 077
 # The public artifact directory never contains fixture material.
 run_name="migration-upgrade-secrets.$run_nonce"
 refuse_public_private_entries
+helpers="$project_root/ops/testing"
 coproc CUSTODY {
-    exec python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" "$run_name"
+    exec /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" "$run_name"
 }
 custody_process=$CUSTODY_PID
 if ! read -r creator descriptor created_identity <&"${CUSTODY[0]}"; then
@@ -456,6 +432,16 @@ wait "$custody_process"
 run_identity="$created_identity"
 export UPGRADE_PRIVATE_RUN_IDENTITY="$run_identity"
 refuse_public_private_entries
+# Everything this process runs from here on comes from the commit, verified
+# object by object, never from the checkout; the checkout must still match it.
+sealed_root="/dev/shm/migration-upgrade-sealed.$run_nonce"
+if ! /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
+    seal-helpers "$project_root" "$commit_sha" "$sealed_root"; then
+    setup_detail=helpers_unsealed
+    exit 1
+fi
+helpers="$sealed_root/ops/testing"
+verify_sealed_helpers
 readonly seed_file="$secret_dir/seed.json"
 base_worktree=""
 wave_tree=""
@@ -465,7 +451,7 @@ export UPGRADE_PRIVATE_RUN_DIR="$secret_dir"
 # A child sees only these host paths, each read-only; the interpreter's inode
 # and the project venv's are the only links the census accepts by identity.
 # The only TCP port a child may reach: the rehearsal database.
-sandbox_db_port="$(python3 -I -c 'import sys, urllib.parse as u; print(u.urlsplit(sys.argv[1]).port or "")' "${MIGRATION_DATABASE_URL:-}")"
+sandbox_db_port="$(/usr/bin/python3 -B -I -c 'import sys, urllib.parse as u; print(u.urlsplit(sys.argv[1]).port or "")' "${MIGRATION_DATABASE_URL:-}")"
 interpreter_path="$project_root/.venv/bin/python"
 [[ -e "$interpreter_path" ]] || interpreter_path="$(command -v python3)"
 # UPGRADE_SANDBOX_READ_ONLY lets a caller name further read-only paths.
@@ -483,10 +469,10 @@ for interpreter_candidate in "$interpreter_path" "$(command -v python3)"; do
             prefix) sandbox_read_only+=":$interpreter_value" ;;
             inode) allowed_inodes+=("inode:$interpreter_value") ;;
         esac
-    done < <(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" interpreter "$interpreter_candidate")
+    done < <(/usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" interpreter "$interpreter_candidate")
 done
 if [[ -e "$project_root/.venv" ]]; then
-    allowed_inodes+=("inode:$(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" inode "$project_root/.venv")")
+    allowed_inodes+=("inode:$(/usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" inode "$project_root/.venv")")
 fi
 export UPGRADE_SANDBOX_READ_ONLY="$sandbox_read_only"
 make_private_dir tmp tmp_dir
@@ -499,7 +485,7 @@ guard_private_tree
 coproc ARCHIVE { sandboxed git -C "$project_root" archive --format=tar "$base_sha"; }
 archive_process=$ARCHIVE_PID
 archive_in="${ARCHIVE[0]}"
-if ! extracted="$(python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+if ! extracted="$(/usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
     extract "$run_fd" "$run_identity" base <&"$archive_in")"; then
     eval "exec ${archive_in}<&-"
     wait "$archive_process" || true
@@ -523,7 +509,7 @@ if [ "${UPGRADE_REUSE_ENVIRONMENT:-0}" = 1 ]; then
     # constrained-host rehearsals from rebuilding the same environment.
     sandboxed cmp "$base_worktree/uv.lock" "$project_root/uv.lock"
     venv_target="$(realpath "$project_root/.venv")"
-    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" symlink \
+    /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" symlink \
         "$base_worktree" "${run_entries[base]}" .venv "$venv_target"
     run_links[base/.venv]="$venv_target"
 else
@@ -561,7 +547,7 @@ create_and_migrate_base() {
     db_created=1
     UPGRADE_SANDBOX_STDIN=pipe psql_super -d "$upgrade_db" \
         -v database_name="$upgrade_db" -v app_schema="clinic_app" \
-        -f - < "$project_root/ops/db/bootstrap.sql"
+        -f - < "$sealed_root/ops/db/bootstrap.sql"
     echo "== migrate at base revision =="
     base_manage migrate --no-input
     base_manage shell -c 'import os,runpy; runpy.run_path(os.environ["UPGRADE_SEED_STATE"])["observe_base"]()'
@@ -576,7 +562,7 @@ seed_base() {
         collect_probe_cases "$project_root" "$seed_file" "$secret_dir/lane-probes.json" || rc=$?
     else
         UPGRADE_SEED_FILE="$seed_file" UPGRADE_HELPER_ROOT="$project_root" \
-            UPGRADE_SANDBOX_STDIN=pipe base_manage shell < "$project_root/ops/testing/migration_upgrade_seed.py" || rc=$?
+            UPGRADE_SANDBOX_STDIN=pipe base_manage shell < "$helpers/migration_upgrade_seed.py" || rc=$?
     fi
     return "$rc"
 }
@@ -599,13 +585,13 @@ rehearse_wave_h() {
     differential_stage=reference_worktree
     make_private_dir wave wave_tree
     guard_private_tree
-    python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" \
+    /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
         empty "$wave_tree" "${run_entries[wave]}"
     sandboxed git -C "$project_root" clone --quiet --shared --no-checkout -- "$project_root" "$wave_tree"
     sandboxed git -C "$wave_tree" checkout --quiet --detach "$wave_sha"
     if sandboxed cmp -s "$wave_tree/uv.lock" "$project_root/uv.lock"; then
         venv_target="$(realpath "$project_root/.venv")"
-        python3 -I "$project_root/ops/testing/migration_upgrade_custody.py" symlink \
+        /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" symlink \
             "$wave_tree" "${run_entries[wave]}" .venv "$venv_target"
         run_links[wave/.venv]="$venv_target"
     else
@@ -762,6 +748,8 @@ differential_stage=verifier_differential
         UPGRADE_WAVE_H_REPORT="$differential_report" \
         uv run --frozen --no-sync --no-env-file python \
         tests/infra/wave_h_entry_differential.py "$wave_tree") || differential_rc=$?
+    # Read once, whatever the child's status: a failing report is evidence too.
+    capture_attestation differential.json held_differential || held_differential=""
     if [ "$differential_rc" != 0 ]; then
         exit "$differential_rc"
     fi
@@ -779,7 +767,8 @@ differential_stage=clean_forward_verification
     UPGRADE_VERIFIED_FILE="$secret_dir/verified.json" \
     UPGRADE_SEED_FILE="$seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
-        < "$project_root/ops/testing/migration_upgrade_verify.py")
+        < "$helpers/migration_upgrade_verify.py")
+capture_attestation verified.json held_verified || { setup_detail=attestation_unreadable; exit 1; }
 
 echo "== confirm no migration drift =="
 (cd "$project_root" && sandboxed env \
@@ -788,16 +777,18 @@ echo "== confirm no migration drift =="
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
 
 guard_private_tree
-sandboxed python3 "$project_root/ops/testing/migration_upgrade_verdict.py" \
+UPGRADE_SANDBOX_STDIN=pipe sandboxed python3 - \
     "$seed_file" "$base_sha" "$upgrade_db" "$secret_dir/verified.json" \
-    "$UPGRADE_DATABASE_RECREATED"
-# Check the published artifact, not just the writer's in-memory object.
-if ! sandboxed cmp -s "$secret_dir/verdict.json" "$secret_dir/verified.json"; then
+    "$UPGRADE_DATABASE_RECREATED" < "$helpers/migration_upgrade_verdict.py"
+# Compare what this process read once from each file, never the files again.
+capture_attestation verdict.json held_verdict || { setup_detail=attestation_unreadable; exit 1; }
+if [[ "$held_verdict" != "$held_verified" ]]; then
     echo "published upgrade verdict disagrees with the verified base histories" >&2
     exit 1
 fi
 verify_sealed_tree
 guard_private_tree
+verify_sealed_helpers
 differential_stage=verdict_publication
 publish_verdict PASS
 echo "migration-upgrade: PASS"

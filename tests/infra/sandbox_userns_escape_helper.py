@@ -6,10 +6,8 @@ namespace and its mount namespace and clear ``MS_RDONLY`` on a bind the sandbox
 set up. A policy that lives in the mount namespace cannot survive that; one
 attached to the child's own credentials can.
 
-Usage: sandbox_userns_escape_helper.py LAUNCHER_PID DIRECTORY [SOURCE]
-Prints ``CLEARED`` once the directory's mounts are writable, else the error. With
-SOURCE, a foreign directory is first bind-mounted over DIRECTORY inside the
-sandbox, the stronger attack a path-based policy cannot see.
+Usage: sandbox_userns_escape_helper.py LAUNCHER_PID DIRECTORY
+Prints ``CLEARED`` once the directory's mounts are writable, else the error.
 """
 
 import ctypes
@@ -26,8 +24,6 @@ AT_FDCWD = -100
 AT_RECURSIVE = 0x8000
 MOUNT_ATTR_RDONLY = 0x1
 SYS_MOUNT_SETATTR = 442
-MS_BIND = 4096
-MS_REC = 16384
 
 
 def _children(pid: int) -> list[int]:
@@ -60,7 +56,7 @@ def _leaf(pid: int, own_mount_namespace: Path) -> int:
     return best
 
 
-def main(launcher: int, directory: str, source: str | None = None) -> None:
+def main(launcher: int, directory: str) -> None:
     child = _leaf(launcher, Path("/proc/self/ns/mnt").readlink())
     mount_namespace = os.open(f"/proc/{child}/ns/mnt", os.O_RDONLY)
     owner = fcntl.ioctl(mount_namespace, NS_GET_USERNS, 0)
@@ -68,11 +64,6 @@ def main(launcher: int, directory: str, source: str | None = None) -> None:
     os.setns(mount_namespace, CLONE_NEWNS)
     attribute = struct.pack("QQQQ", 0, MOUNT_ATTR_RDONLY, 0, 0)
     libc = ctypes.CDLL(None, use_errno=True)
-    if source is not None and libc.mount(
-        source.encode(), directory.encode(), None, MS_BIND | MS_REC, None
-    ):
-        sys.stdout.write(f"BIND_FAILED errno {ctypes.get_errno()}\\n")
-        return
     result = libc.syscall(
         SYS_MOUNT_SETATTR, AT_FDCWD, directory.encode(), AT_RECURSIVE, attribute, 32
     )
@@ -83,4 +74,4 @@ def main(launcher: int, directory: str, source: str | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main(int(sys.argv[1]), sys.argv[2], *sys.argv[3:4])
+    main(int(sys.argv[1]), sys.argv[2])

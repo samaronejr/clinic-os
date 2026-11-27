@@ -25,8 +25,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 RUN_NAME = re.compile(r"migration-upgrade-secrets\.[0-9a-f]{32}")
-# The supervisor's own seal: nonce-bound, written exclusively then renamed into place.
-SEAL = re.compile(r"^migration-upgrade-seal\.[0-9a-f]{32}(?:\.\d+\.new)?$")
 PENDING = re.compile(r"^\.verdict-[0-9a-f]+(?:-\d+)?\.pending$")
 NAMESPACE = re.compile(r"^/proc/(?:\d+|self)/(?:uid_map|gid_map|setgroups)$")
 WRITE = re.compile(r"\bO_(?:WRONLY|RDWR|CREAT|TRUNC|APPEND|TMPFILE)\b")
@@ -188,8 +186,6 @@ class _Audit:
             return "null"
         if NAMESPACE.fullmatch(target):
             return "namespace_map"
-        if SEAL.fullmatch(posixpath.basename(target)):
-            return "seal_manifest"
         public = target == self.public_dir or (
             target.startswith(f"{self.public_dir}/")
             and (
