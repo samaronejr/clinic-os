@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import copy
 from typing import TYPE_CHECKING
 
 import pytest
@@ -117,14 +118,30 @@ def test_batch_constraint_metadata_reaches_reverse_python_callbacks(
     assert observations[1] == observations[0]
 
 
-def test_evaluation_batch_metadata_reaches_schema_and_python_consumers() -> None:
+@pytest.fixture
+def evaluation_plan() -> tuple[Sequence[Operation], ProjectState]:
     loader = MigrationLoader(None)
     migration = loader.disk_migrations["ai", "0005_evaluation"]
-    batch = migration.operations[0]
-    assert isinstance(batch, SchemaStateBatch)
+    return migration.operations, loader.project_state(migration.dependencies)
+
+
+def _evaluation_batch(operations: Sequence[Operation]) -> SchemaStateBatch:
+    batches = [op for op in operations if isinstance(op, SchemaStateBatch)]
+    assert len(batches) == 1, "expected one protected evaluation batch"
+    (batch,) = batches
+    return batch
+
+
+def _assert_evaluation_batch_metadata(
+    operations: Sequence[Operation], before: ProjectState
+) -> None:
+    batch = _evaluation_batch(operations)
     assert batch.atomic is True
     assert batch.reversible is False
-    before = loader.project_state(migration.dependencies)
+    for operation in operations:
+        if operation is batch:
+            break
+        operation.state_forwards("ai", before)
     observations = []
     statements = []
     constraint = models.CheckConstraint(
@@ -198,6 +215,49 @@ def test_evaluation_batch_metadata_reaches_schema_and_python_consumers() -> None
         (64, rating_constraints, []),
         (63, rating_constraints, [constraint.name]),
         (63, rating_constraints, [constraint.name]),
-    ]
+    ], "evaluation callbacks saw different field or constraint state"
     assert observations[1] == observations[0]
     assert statements[1] == statements[0]
+
+
+def test_evaluation_batch_metadata_reaches_schema_and_python_consumers(
+    evaluation_plan: tuple[Sequence[Operation], ProjectState],
+) -> None:
+    _assert_evaluation_batch_metadata(*evaluation_plan)
+
+
+def test_evaluation_batch_oracle_rejects_missing_batch(
+    evaluation_plan: tuple[Sequence[Operation], ProjectState],
+) -> None:
+    operations, before = evaluation_plan
+    batch = _evaluation_batch(operations)
+    with pytest.raises(AssertionError, match="expected one protected evaluation batch"):
+        _assert_evaluation_batch_metadata(
+            [operation for operation in operations if operation is not batch], before
+        )
+
+
+def test_evaluation_batch_oracle_rejects_missing_rating_constraint(
+    evaluation_plan: tuple[Sequence[Operation], ProjectState],
+) -> None:
+    operations, before = evaluation_plan
+    batch = _evaluation_batch(operations)
+    (missing,) = (
+        operation
+        for operation in batch.state_operations
+        if isinstance(operation, migrations.AddConstraint)
+        and operation.constraint.name == "ai_eval_rating_human"
+    )
+    changed = copy(batch)
+    # Even if both halves lose the same constraint, the callback oracle must fail.
+    changed.state_operations = [
+        operation for operation in batch.state_operations if operation is not missing
+    ]
+    changed.database_operations = [
+        operation for operation in batch.database_operations if operation is not missing
+    ]
+    with pytest.raises(AssertionError, match="evaluation callbacks saw different"):
+        _assert_evaluation_batch_metadata(
+            [changed if operation is batch else operation for operation in operations],
+            before,
+        )
