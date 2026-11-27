@@ -10,20 +10,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from django.db import connection, migrations
+from apps.tenancy.migrations._resumable_schema import TransactionScript
+from django.db import connection
 from django.db.migrations.loader import MigrationLoader
 from psycopg import sql
 
 from . import clock_catalog_cache as cache
+from . import clock_runsql
 from .clock_catalog import live_clock_inventory
-from .clock_runsql import SQLDecoder
+from .clock_runsql import SQLDecoder, run_sql_operations
 from .clock_source import parsed_source
 from .clock_support import frozen_sql_clocks
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
-
-    from django.db.migrations.operations.base import Operation
+    from django.db.migrations import Migration
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, available_apps=[]),
@@ -81,14 +81,6 @@ def test_intake_dependency_clocks_use_the_authority_axis(
             assert authority not in (reference, ambient)
 
 
-def _operations(operations: Iterable[Operation]) -> Iterator[migrations.RunSQL]:
-    for operation in operations:
-        if isinstance(operation, migrations.RunSQL):
-            yield operation
-        elif isinstance(operation, migrations.SeparateDatabaseAndState):
-            yield from _operations(operation.database_operations)
-
-
 def _strings(value: object) -> list[str]:
     if not value:
         return []
@@ -98,21 +90,51 @@ def _strings(value: object) -> list[str]:
     return [item[0] if isinstance(item, (tuple, list)) else item for item in value]
 
 
+def _assert_migration_sql(migration: Migration, path: Path, observed: list[str]) -> int:
+    expected = [
+        text
+        for operation in run_sql_operations(migration.operations)
+        for value in (operation.sql, operation.reverse_sql)
+        for text in _strings(value)
+    ]
+    assert Counter(text for text in observed if text) == Counter(expected), path
+    return len(expected)
+
+
 @pytest.mark.django_db(transaction=True)
 def test_finite_decoder_matches_every_shipped_migration_runsql_value() -> None:
     decoder = SQLDecoder(ROOT)
     checked = 0
-    for migration in MigrationLoader(connection).disk_migrations.values():
+    for migration in MigrationLoader(None).disk_migrations.values():
         path = Path(inspect.getfile(type(migration)))
         if not path.is_relative_to(ROOT / "apps"):
             continue
-        expected = [
-            text
-            for operation in _operations(migration.operations)
-            for value in (operation.sql, operation.reverse_sql)
-            for text in _strings(value)
-        ]
         observed = decoder.fragments(path, parsed_source(path.read_text()))
-        assert Counter(text for text in observed if text) == Counter(expected), path
-        checked += len(expected)
+        checked += _assert_migration_sql(migration, path, observed)
+    assert checked > 0
+
+
+def test_transaction_script_cannot_disappear_from_finite_census(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    decoder = SQLDecoder(ROOT)
+    qualified_name = f"{TransactionScript.__module__}.{TransactionScript.__name__}"
+    without_script = clock_runsql._graph_constructors() - {qualified_name}
+    graph = MigrationLoader(None, replace_migrations=False).graph
+    checked = 0
+    for migration in graph.nodes.values():
+        if not any(
+            isinstance(operation, TransactionScript)
+            for operation in run_sql_operations(migration.operations)
+        ):
+            continue
+        path = Path(inspect.getfile(type(migration)))
+        tree = parsed_source(path.read_text())
+        _assert_migration_sql(migration, path, decoder.fragments(path, tree))
+        with monkeypatch.context() as mutant:
+            mutant.setattr(clock_runsql, "_graph_constructors", lambda: without_script)
+            incomplete = decoder.fragments(path, tree)
+        with pytest.raises(AssertionError, match=re.escape(str(path))):
+            _assert_migration_sql(migration, path, incomplete)
+        checked += 1
     assert checked > 0

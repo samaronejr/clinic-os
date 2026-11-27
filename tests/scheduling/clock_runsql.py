@@ -3,18 +3,43 @@
 from __future__ import annotations
 
 import ast
+from functools import lru_cache
 from typing import TYPE_CHECKING
+
+from django.db import migrations
+from django.db.migrations.loader import MigrationLoader
 
 from .clock_static_scope import External, Modules, Scope
 from .clock_static_statements import statements
 from .clock_static_values import comprehension_scopes, evaluate
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
     from pathlib import Path
 
+    from django.db.migrations.operations.base import Operation
+
 SENTINEL = "__clock_unresolved_runsql__"
-RESUMABLE_SQL_MODULE = "apps.tenancy.migrations._resumable_schema"
-RESUMABLE_SQL_CONSTRUCTORS = frozenset({"AtomicRunSQL", "ResumableRunSQL"})
+
+
+def run_sql_operations(operations: Iterable[Operation]) -> Iterator[migrations.RunSQL]:
+    for operation in operations:
+        if isinstance(operation, migrations.RunSQL):
+            yield operation
+        elif isinstance(operation, migrations.SeparateDatabaseAndState):
+            yield from run_sql_operations(operation.database_operations)
+
+
+@lru_cache(maxsize=1)
+def _graph_constructors() -> frozenset[str]:
+    # The graph supplies constructor identities, never SQL values for decoding.
+    graph = MigrationLoader(None, replace_migrations=False).graph
+    return frozenset(
+        f"{constructor.__module__}.{constructor.__name__}"
+        for migration in graph.nodes.values()
+        for operation in run_sql_operations(migration.operations)
+        if (constructor := type(operation)) is not migrations.RunSQL
+    )
 
 
 def _scopes(
@@ -121,14 +146,13 @@ class SQLDecoder:
             for parent in ast.walk(tree)
             for child in ast.iter_child_nodes(parent)
         }
-        protected_constructors = {
+        constructors = _graph_constructors()
+        imported_constructors = {
             alias.asname or alias.name
             for statement in tree.body
             if isinstance(statement, ast.ImportFrom)
-            and statement.level == 0
-            and statement.module == RESUMABLE_SQL_MODULE
             for alias in statement.names
-            if alias.name in RESUMABLE_SQL_CONSTRUCTORS
+            if self._import_identity(path, statement, alias.name) in constructors
         }
         result = []
         for node in calls:
@@ -140,13 +164,16 @@ class SQLDecoder:
                 == "RunSQL"
             )
             constructor = evaluate(node.func, module.scope)
-            protected = (
+            imported = (
                 isinstance(node.func, ast.Name)
-                and node.func.id in protected_constructors
+                and node.func.id in imported_constructors
             )
-            if not (named or protected) and not (
+            if not (named or imported) and not (
                 isinstance(constructor, External)
-                and constructor.name.endswith(".RunSQL")
+                and (
+                    constructor.name.endswith(".RunSQL")
+                    or constructor.name in constructors
+                )
             ):
                 continue
             arguments = list(node.args[:2]) + [
@@ -158,3 +185,17 @@ class SQLDecoder:
                 for argument in arguments:
                     result.extend(_sql(evaluate(argument, scope)))
         return result
+
+    def _import_identity(self, path: Path, statement: ast.ImportFrom, name: str) -> str:
+        if statement.level == 0:
+            return f"{statement.module}.{name}"
+        package = path.relative_to(self.modules.root).parent.parts
+        return ".".join(
+            part
+            for part in (
+                *package[: len(package) - statement.level + 1],
+                statement.module,
+                name,
+            )
+            if part
+        )

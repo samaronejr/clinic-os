@@ -14,28 +14,29 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import django
-from apps.tenancy.migration_preflight import boundary, schema_digest
+from apps.tenancy.migration_preflight import boundary, schema_projection
 from apps.tenancy.migrations import _resumable_schema as recovery
 from django.db import connection
 from django.db.backends.signals import connection_created
 from django.db.migrations.executor import MigrationExecutor
 
 if TYPE_CHECKING:
+    from apps.tenancy.migration_preflight import SchemaProjection
     from django.db.backends.base.base import BaseDatabaseWrapper
 
 
-def capture(db: BaseDatabaseWrapper) -> dict[str, str]:
+def capture(db: BaseDatabaseWrapper) -> dict[str, SchemaProjection]:
     """Read each edge after a real commit, never a rolled-back simulation."""
-    result: dict[str, str] = {}
+    result: dict[str, SchemaProjection] = {}
     executor = MigrationExecutor(db)
     recorder = executor.recorder
     applied = set(recorder.applied_migrations())
-    prior = schema_digest(db)
+    prior = schema_projection(db)
     result[boundary(applied, None, recorded=recorder.has_table())] = prior
     recorder.ensure_schema()
-    prior = schema_digest(db)
+    prior = schema_projection(db)
     result[boundary(applied, None, recorded=True)] = prior
-    step_digests: set[str] = {prior}
+    step_digests: set[str] = {prior.digest}
     record_step = recovery.record_step
 
     def observed_commit(
@@ -44,14 +45,14 @@ def capture(db: BaseDatabaseWrapper) -> dict[str, str]:
         record_step(db, key, step)
 
         def observe() -> None:
-            digest = schema_digest(db)
-            if digest in step_digests:
+            projection = schema_projection(db)
+            if projection.digest in step_digests:
                 msg = (
                     f"{'.'.join(key)} step {step} cannot distinguish a missing receipt"
                 )
                 raise RuntimeError(msg)
-            step_digests.add(digest)
-            result[boundary(applied, (key, step), recorded=True)] = digest
+            step_digests.add(projection.digest)
+            result[boundary(applied, (key, step), recorded=True)] = projection
 
         db.on_commit(observe)
 
@@ -62,10 +63,10 @@ def capture(db: BaseDatabaseWrapper) -> dict[str, str]:
                 msg = "Expected a Django migration"
                 raise TypeError(msg)
             applied.add((migration.app_label, migration.name))
-            digest = schema_digest(db)
-            result[boundary(applied, None, recorded=True)] = digest
+            projection = schema_projection(db)
+            result[boundary(applied, None, recorded=True)] = projection
             step_digests.clear()
-            step_digests.add(digest)
+            step_digests.add(projection.digest)
 
     executor.progress_callback = observe_migration
     with patch.object(recovery, "record_step", observed_commit):
@@ -73,8 +74,24 @@ def capture(db: BaseDatabaseWrapper) -> dict[str, str]:
     return result
 
 
+def serialize(states: dict[str, SchemaProjection]) -> dict[str, object]:
+    """Pack repeated index fingerprints into one dictionary of bit positions."""
+    indexes = sorted({index for state in states.values() for index in state.indexes})
+    bits = {index: 1 << ordinal for ordinal, index in enumerate(indexes)}
+    return {
+        "boundaries": {
+            key: (
+                state.digest,
+                format(sum(bits[index] for index in state.indexes), "x"),
+            )
+            for key, state in states.items()
+        },
+        "indexes": indexes,
+    }
+
+
 def main() -> None:
-    """Write only deterministic schema hashes, never a dump or connection info."""
+    """Write deterministic schema hashes and diagnostics, never schema SQL."""
     # Keep application writes off and use a separately bootstrapped clone.
     django.setup()
 
@@ -91,7 +108,7 @@ def main() -> None:
             raise RuntimeError(msg)
 
     connection_created.connect(require_disposable, weak=False)
-    json.dump(capture(connection), sys.stdout, indent=2, sort_keys=True)
+    json.dump(serialize(capture(connection)), sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
 
 

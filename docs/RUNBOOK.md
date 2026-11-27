@@ -590,7 +590,9 @@ so a `VACUUM FULL` alone does not block a clean upgrade. It is not a row audit:
 values left by a historically wrong fast default, arbitrary prior data
 corruption, and extension internals not represented by the projection are
 not detected. A declaration such as a new clustering designation or an
-operator-created index is logical DDL and is not silently accepted.
+operator-created index is logical DDL and is not silently accepted. If index
+definitions differ at a failed edge, the refusal shows the schema-qualified
+index names, not their definitions or row values.
 
 Missing/corrupt progress, an unsupported ledger state, or a logical mismatch
 at entry stops before migration writes. Keep writes gated. If the error names

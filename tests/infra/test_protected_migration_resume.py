@@ -295,13 +295,14 @@ def test_resume_after_each_committed_boundary(
         assert read() == original
 
 
-def _assert_refused(db: DatabaseWrapper, admin_url: str, message: str) -> None:
+def _assert_refused(db: DatabaseWrapper, admin_url: str, message: str) -> str:
     rows = _row_image(db, admin_url)
     schema = migration_preflight.schema_digest(db)
-    with pytest.raises(CommandError, match=message):
+    with pytest.raises(CommandError, match=message) as refusal:
         _run(db)
     assert _row_image(db, admin_url) == rows
     assert migration_preflight.schema_digest(db) == schema
+    return str(refusal.value)
 
 
 def _row_image(db: DatabaseWrapper, admin_url: str) -> str:
@@ -433,14 +434,22 @@ def test_unaccent_dictionary_drift_refuses_then_same_database_retries(
 def test_operator_index_is_refused_then_retry_succeeds(plan: Plan) -> None:
     with _clone(plan.admin_url, plan.source[INTAKE]) as db:
         _seed(db, INTAKE)
+        canary = "synthetic-index-definition-canary"
         with db.cursor() as cursor:
             cursor.execute(
-                "CREATE INDEX f6_operator_index "
-                "ON clinic_app.intake_patient (organization_id)"
+                sql.SQL(
+                    "CREATE INDEX f6_operator_index "
+                    "ON clinic_app.intake_patient (organization_id) "
+                    "WHERE full_name <> {}"
+                ).format(sql.Literal(canary))
             )
-        _assert_refused(
-            db, plan.admin_url, "operator-created indexes.*restore or rebuild"
+        diagnostic = _assert_refused(
+            db,
+            plan.admin_url,
+            r"entry logical schema differs.*index drift: clinic_app\.f6_operator_index"
+            r"; restore or rebuild",
         )
+        assert canary not in diagnostic
         with db.cursor() as cursor:
             cursor.execute("DROP INDEX clinic_app.f6_operator_index")
         _run(db)

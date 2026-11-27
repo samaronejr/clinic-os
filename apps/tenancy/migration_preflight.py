@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 from contextlib import contextmanager
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from shutil import which
@@ -31,8 +32,44 @@ if TYPE_CHECKING:
 
     from apps.tenancy.migrations._resumable_schema import Cut, MigrationKey
 
+type IndexFingerprint = tuple[str, str]
+
+
+@dataclass(frozen=True)
+class SchemaProjection:
+    """An authoritative logical digest with non-authoritative index clues."""
+
+    digest: str
+    indexes: frozenset[IndexFingerprint]
+
+
+@dataclass(frozen=True)
+class PlanReference:
+    """Rehearsed fingerprints for the two supported forward walks."""
+
+    # Deduplicate index identities across all boundaries. The bitmask records
+    # which fingerprints are present at an edge, not which changes to allow.
+    boundaries: Mapping[str, tuple[str, str]]
+    indexes: tuple[IndexFingerprint, ...]
+
+    def at(self, boundary_key: str) -> SchemaProjection | None:
+        """Resolve a ledger boundary and decode its diagnostic index set."""
+        entry = self.boundaries.get(boundary_key)
+        if entry is None:
+            return None
+        digest, encoded_mask = entry
+        mask = int(encoded_mask, 16)
+        return SchemaProjection(
+            digest,
+            frozenset(
+                entry for bit, entry in enumerate(self.indexes) if mask & (1 << bit)
+            ),
+        )
+
+
 REFERENCE: Final = Path(__file__).with_name("migration_plan_pg16.json")
 POSTGRES_MAJOR: Final = 16
+MAX_REPORTED_INDEXES: Final = 8
 _METADATA = re.compile(
     rb"(?m)^(?:\\(?:un)?restrict [A-Za-z0-9]+|-- Dumped (?:from|by) .*)\n"
 )
@@ -69,8 +106,8 @@ def _normalize(dump: bytes) -> bytes:
     return b"\n".join([dump[: starts[0]].rstrip(), *sorted(bodies)])
 
 
-def schema_digest(db: BaseDatabaseWrapper) -> str:
-    """Hash one schema-only dump plus the extension identities it abbreviates."""
+def schema_projection(db: BaseDatabaseWrapper) -> SchemaProjection:
+    """Hash one schema dump; read index identities for mismatch diagnostics."""
     db.ensure_connection()
     conn = cast("Connection[tuple[object, ...]]", db.connection)
     info = conn.info
@@ -119,6 +156,21 @@ def schema_digest(db: BaseDatabaseWrapper) -> str:
             """
         )
         members = sorted(cursor.fetchall())
+        # Use PostgreSQL's own index deparser. These fingerprints only name
+        # differences after a failed whole-schema comparison; none is used to
+        # select or accept a plan boundary. Never include index SQL in an error.
+        cursor.execute(
+            """
+            SELECT pg_catalog.quote_ident(schemaname) || '.' ||
+                   pg_catalog.quote_ident(indexname), indexdef
+            FROM pg_catalog.pg_indexes
+            WHERE schemaname !~ '^pg_' AND schemaname <> 'information_schema'
+            """
+        )
+        indexes = frozenset(
+            (name, sha256(definition.encode()).hexdigest())
+            for name, definition in cursor.fetchall()
+        )
         try:
             dump = subprocess.run(  # noqa: S603 - fixed executable and flags
                 [
@@ -142,7 +194,12 @@ def schema_digest(db: BaseDatabaseWrapper) -> str:
                 "(check the PostgreSQL 16 client and owner access)"
             )
     payload = _normalize(dump) + b"\0" + json.dumps(members).encode()
-    return sha256(payload).hexdigest()
+    return SchemaProjection(sha256(payload).hexdigest(), indexes)
+
+
+def schema_digest(db: BaseDatabaseWrapper) -> str:
+    """Return the authoritative full logical digest."""
+    return schema_projection(db).digest
 
 
 def boundary(
@@ -157,22 +214,40 @@ def boundary(
     ).hexdigest()
 
 
-def _check(db: BaseDatabaseWrapper, expected: str, *, edge: str) -> None:
-    if schema_digest(db) != expected:
+def _check(db: BaseDatabaseWrapper, expected: SchemaProjection, *, edge: str) -> None:
+    observed = schema_projection(db)
+    if observed.digest != expected.digest:
+        drift = sorted({name for name, _ in observed.indexes ^ expected.indexes})
+        hint = ""
+        if drift:
+            names = ", ".join(
+                name.encode("unicode_escape").decode("ascii")
+                for name in drift[:MAX_REPORTED_INDEXES]
+            )
+            remaining = len(drift) - MAX_REPORTED_INDEXES
+            extra = f" and {remaining} more" if remaining > 0 else ""
+            hint = f"; index drift: {names}{extra}"
         refuse(
             f"{edge} logical schema differs from the approved pg_dump projection "
-            "(unexpected DDL, including operator-created indexes, is unsupported)"
+            f"(unexpected DDL is unsupported){hint}"
         )
 
 
-def _reference() -> Mapping[str, str]:
+def _reference() -> PlanReference:
     try:
-        return cast("dict[str, str]", json.loads(REFERENCE.read_text(encoding="utf-8")))
-    except (OSError, ValueError):
+        raw = json.loads(REFERENCE.read_text(encoding="utf-8"))
+        return PlanReference(
+            cast("dict[str, tuple[str, str]]", raw["boundaries"]),
+            tuple(
+                (name, digest)
+                for name, digest in cast("list[tuple[str, str]]", raw["indexes"])
+            ),
+        )
+    except (OSError, ValueError, KeyError, TypeError):
         refuse("missing or unreadable approved PostgreSQL 16 plan reference")
 
 
-def verify_start(executor: MigrationExecutor) -> tuple[str, Cut | None]:
+def verify_start(executor: MigrationExecutor) -> tuple[SchemaProjection, Cut | None]:
     """Require a single ledger-declared boundary and compare to that reference."""
     db = executor.connection
     loader = executor.loader
@@ -216,17 +291,17 @@ def verify_start(executor: MigrationExecutor) -> tuple[str, Cut | None]:
             interrupted = key, count
 
     reference = _reference()
-    current = reference.get(
+    current = reference.at(
         boundary(applied, interrupted, recorded=recorder.has_table())
     )
-    destination = reference.get(boundary(loader.graph.nodes, None, recorded=True))
+    destination = reference.at(boundary(loader.graph.nodes, None, recorded=True))
     if current is None or destination is None:
         refuse("Django ledger and progress do not identify an approved plan boundary")
     _check(db, current, edge="entry")
     return destination, interrupted
 
 
-def verify_end(db: BaseDatabaseWrapper, expected: str) -> None:
+def verify_end(db: BaseDatabaseWrapper, expected: SchemaProjection) -> None:
     """Do not publish an unrecognized schema after the forward plan."""
     _check(db, expected, edge="exit")
 

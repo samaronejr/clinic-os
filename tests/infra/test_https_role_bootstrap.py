@@ -59,14 +59,39 @@ def test_https_bootstrap_installs_migration_roles_with_closed_authority(
     ):
 
         def execute_bootstrap(arguments: tuple[str, ...]) -> str:
-            assert arguments[:4] == ("exec", "--user", "999:999", "synthetic-pg")
-            assert arguments[-2] == "-c"
-            statement = re.sub(
-                r"\bclinic_(owner|app|resolver|super|agent)\b",
-                lambda match: prefix + match[0],
-                arguments[-1],
+            assert arguments[:11] == (
+                "exec",
+                "--user",
+                "999:999",
+                "synthetic-pg",
+                "psql",
+                "-U",
+                "postgres",
+                "-d",
+                connection.info.dbname,
+                "-v",
+                "ON_ERROR_STOP=1",
             )
-            _ = connection.execute(statement.encode("utf-8"))
+            actions = arguments[11:]
+            assert actions[::2] == ("-c", "-c")
+            for action in actions[1::2]:
+                statement = re.sub(
+                    r"\bclinic_(owner|app|resolver|super|agent|migration)\b",
+                    lambda match: prefix + match[0],
+                    action,
+                ).strip()
+                if statement.startswith("BEGIN;"):
+                    # The fixture already owns the transaction. Mirror psql's
+                    # role reset without committing global role/catalog changes.
+                    assert statement.endswith("COMMIT;")
+                    _ = connection.execute(
+                        statement.removeprefix("BEGIN;")
+                        .removesuffix("COMMIT;")
+                        .encode("utf-8")
+                    )
+                    _ = connection.execute("RESET ROLE")
+                else:
+                    _ = connection.execute(statement.encode("utf-8"))
             return ""
 
         monkeypatch.setattr(
@@ -101,3 +126,18 @@ def test_https_bootstrap_installs_migration_roles_with_closed_authority(
                 f"{prefix}clinic_agent",
             ),
         ).fetchone() == (True, True, True)
+        journal = f"{prefix}clinic_migration"
+        owner = f"{prefix}clinic_owner"
+        assert connection.execute(
+            """SELECT pg_get_userbyid(n.nspowner), pg_get_userbyid(c.relowner)
+               FROM pg_namespace n JOIN pg_class c ON c.relnamespace = n.oid
+               WHERE n.nspname = %s AND c.relname = 'progress' AND c.relkind = 'r'""",
+            (journal,),
+        ).fetchone() == (owner, owner)
+        for role in ("app", "agent", "resolver"):
+            runtime = f"{prefix}clinic_{role}"
+            assert connection.execute(
+                "SELECT has_schema_privilege(%s, %s, 'USAGE,CREATE'), "
+                "has_table_privilege(%s, %s, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')",
+                (runtime, journal, runtime, f"{journal}.progress"),
+            ).fetchone() == (False, False)
