@@ -19,7 +19,7 @@ import io
 import json
 import zipfile
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from queue import Queue
 from threading import Barrier, Thread
 from typing import TYPE_CHECKING
@@ -80,15 +80,20 @@ from auth.stepup_test_support import verified_request
 from identity.permission_support import permission_actor, permission_context
 from patient_http_support import audit_event_types, audit_payloads
 from patient_service_support import runtime_role
-from patients.delegate_support import active_grant, delegate_world
+from patients.delegate_support import (
+    active_grant,
+    delegate_clock,
+    delegate_world,
+    resolver_clock,
+)
 from provider_gate_support import activate_capability, seed_capabilities
 from renewal.test_amendments import AMENDED
 from renewal.test_encounters import setup_context
 from renewal.test_patient_access import _issue, _redeem
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from datetime import datetime
+    from collections.abc import Callable, Iterator
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
     from apps.identity.delegates import DelegateReceipt
@@ -209,27 +214,39 @@ def _members(data: bytes) -> str:
 
 @contextmanager
 def data_request_clock(at: datetime) -> Iterator[None]:
-    with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SET LOCAL ROLE clinic_resolver")
-        cursor.execute(
-            "CREATE OR REPLACE FUNCTION clinic_app.data_request_now() "
-            "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-            "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-            "$f$ SELECT %s::timestamptz $f$".replace("%s", "'" + at.isoformat() + "'")
-        )
-        cursor.execute("RESET ROLE")
-    try:
+    with resolver_clock("clinic_app.data_request_now()", at):
         yield
-    finally:
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute("SET LOCAL ROLE clinic_resolver")
+
+
+@pytest.mark.parametrize(
+    ("clock", "signature"),
+    [
+        (data_request_clock, "clinic_app.data_request_now()"),
+        (delegate_clock, "clinic_app.delegate_now()"),
+    ],
+)
+def test_clock_fixture_restores_original_definition_after_failure(
+    clock: Callable[[datetime], AbstractContextManager[None]], signature: str
+) -> None:
+    def definition() -> object:
+        with connection.cursor() as cursor:
             cursor.execute(
-                "CREATE OR REPLACE FUNCTION clinic_app.data_request_now() "
-                "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-                "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-                "$f$ SELECT statement_timestamp() $f$"
+                "SELECT pg_catalog.pg_get_functiondef(%s::regprocedure)", [signature]
             )
-            cursor.execute("RESET ROLE")
+            return cursor.fetchone()
+
+    original = definition()
+    assert original is not None
+
+    def interrupt() -> None:
+        with clock(datetime(2035, 1, 1, tzinfo=UTC)):
+            assert definition() != original
+            msg = "fixture interrupted"
+            raise RuntimeError(msg)
+
+    with pytest.raises(RuntimeError, match="fixture interrupted"):
+        interrupt()
+    assert definition() == original
 
 
 def _submit(  # noqa: PLR0913 - the contract's full keyword surface

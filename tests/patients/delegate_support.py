@@ -21,6 +21,7 @@ from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
 from django.test import override_settings
 from django.utils import timezone
+from psycopg import sql
 
 from identity.permission_support import permission_actor, permission_context
 from patient_service_support import runtime_role
@@ -161,26 +162,31 @@ def active_grant(
 
 
 @contextmanager
-def delegate_clock(at: datetime) -> Iterator[None]:
-    """Replace the owner-only clock, not authorization, and restore it exactly."""
+def resolver_clock(signature: str, at: datetime) -> Iterator[None]:
+    """Replace only a resolver's time source and restore the installed definition."""
     with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute("SET LOCAL ROLE clinic_resolver")
         cursor.execute(
-            "CREATE OR REPLACE FUNCTION clinic_app.delegate_now() "
-            "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-            "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-            "$f$ SELECT %s::timestamptz $f$".replace("%s", "'" + at.isoformat() + "'")
+            "SELECT pg_catalog.pg_get_functiondef(%s::regprocedure)", [signature]
         )
-        cursor.execute("RESET ROLE")
+        row: tuple[str] | None = cursor.fetchone()
+        assert row is not None
+        (definition,) = row
+        assert definition.count("statement_timestamp()") == 1
+        controlled = definition.replace(
+            "statement_timestamp()", sql.Literal(at).as_string(), 1
+        )
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(controlled)
     try:
         yield
     finally:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SET LOCAL ROLE clinic_resolver")
-            cursor.execute(
-                "CREATE OR REPLACE FUNCTION clinic_app.delegate_now() "
-                "RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER "
-                "SET search_path=pg_catalog,clinic_app,pg_temp AS "
-                "$f$ SELECT statement_timestamp() $f$"
-            )
-            cursor.execute("RESET ROLE")
+            cursor.execute(definition)
+
+
+@contextmanager
+def delegate_clock(at: datetime) -> Iterator[None]:
+    """Control the database clock used by delegate expiry."""
+    with resolver_clock("clinic_app.delegate_now()", at):
+        yield

@@ -6,8 +6,9 @@ list: a table, partition, sequence, view, materialized view, foreign table or
 composite type that nobody classified in ``ops/testing/restore_contract.py``
 fails here, naming the relation, before it can break ``make
 restore-rehearsal``. Only indexes are skipped; they hold no data of their own
-and are rebuilt with their table. Anything outside ``clinic_app`` fails too,
-because ``pg_restore --schema=clinic_app`` never restores it.
+and are rebuilt with their table. The bootstrap-owned migration progress table
+is the only exact exclusion outside ``clinic_app``; the target generates its
+own receipts. Any other relation outside the archive schema fails by name.
 """
 
 from __future__ import annotations
@@ -70,6 +71,9 @@ class Manifest:
         restore_contract.SEQUENCE_TARGETS.items()
     )
     excluded: tuple[str, ...] = restore_contract.EXCLUDED_RELATIONS
+    migration_journal: tuple[str, str] | None = (
+        restore_contract.TARGET_MIGRATION_JOURNAL
+    )
 
 
 def catalog_relations() -> tuple[Relation, ...]:
@@ -134,6 +138,12 @@ def unclassified(
     violations: list[tuple[str, str]] = []
     for relation in relations:
         if relation.schema != APP_SCHEMA:
+            if (
+                (relation.schema, relation.name) == manifest.migration_journal
+                and relation.kind == "r"
+                and not relation.partition
+            ):
+                continue
             violations.append(
                 (
                     relation.name,
@@ -166,7 +176,13 @@ def stale_entries(
     manifest = manifest or Manifest()
     present = {relation.name for relation in relations if relation.schema == APP_SCHEMA}
     named = {*manifest.domain, *dict(manifest.sequences), *manifest.excluded}
-    return sorted(named - present)
+    missing = named - present
+    if manifest.migration_journal is not None and not any(
+        (rel.schema, rel.name) == manifest.migration_journal and rel.kind == "r"
+        for rel in relations
+    ):
+        missing.add(".".join(manifest.migration_journal))
+    return sorted(missing)
 
 
 def _runtime_unexpected_relations() -> list[str]:
@@ -332,3 +348,16 @@ def test_partitioned_domain_parent_and_foreign_schema_fail() -> None:
     assert "carries no TABLE DATA" in violations["zz_parent"]
     assert "outside clinic_app" in violations["zz_outside"]
     assert "catalog owner" in violations["audit_event_seq_seq"]
+
+
+def test_only_exact_target_progress_journal_is_excluded() -> None:
+    relations = catalog_relations()
+    schema, journal = restore_contract.TARGET_MIGRATION_JOURNAL
+    assert journal in _flagged(relations, Manifest(migration_journal=None))
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE TABLE clinic_migration.zz_unclassified (id integer)")
+        violations = dict(unclassified(catalog_relations()))
+        transaction.set_rollback(True)
+    assert set(violations) == {"zz_unclassified"}
+    assert f"relation {schema}.zz_unclassified" in violations["zz_unclassified"]

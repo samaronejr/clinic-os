@@ -594,13 +594,13 @@ def _scratch_database(
             admin.execute(migration_progress_sql())
         settings_dict = connections["default"].settings_dict.copy()
         settings_dict["NAME"] = name
-        wrapper = DatabaseWrapper(settings_dict, alias="migration_scratch")
-        connections["migration_scratch"] = wrapper
+        wrapper = DatabaseWrapper(settings_dict, alias=name)
+        connections[name] = wrapper
         try:
             yield wrapper
         finally:
             wrapper.close()
-            del connections["migration_scratch"]
+            del connections[name]
     finally:
         with psycopg.connect(superuser_database_url, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

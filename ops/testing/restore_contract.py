@@ -392,6 +392,9 @@ TARGET_SEEDED_RELATIONS: Final = (
     "providers_capabilityversion",
     "providers_providercapability",
 )
+# The clean target generates its own receipts under the administrator bootstrap.
+# Restoring another database's progress would not prove a committed local step.
+TARGET_MIGRATION_JOURNAL: Final = ("clinic_migration", "progress")
 TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
     "analytics_metricfact": (
         "rebuildable authorized view; target migrations recreate it"

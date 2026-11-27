@@ -82,7 +82,7 @@ def test_fiscal_migration_state_matches_models_without_opening_a_database() -> N
     ).changes(graph=loader.graph)
     assert not changes.get("billing")
     migration = loader.get_migration("billing", "0013_fiscal_documents")
-    assert migration.atomic is False
+    assert migration.atomic is True
     assert len(migration.operations) == 1
     assert migration.operations[0].atomic is True
     assert migration.operations[0].reversible is False

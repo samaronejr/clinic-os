@@ -25,6 +25,7 @@ from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.migrations.exceptions import IrreversibleError
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.loader import MigrationLoader
+from django.db.migrations.recorder import MigrationRecorder
 from django.utils import timezone
 from psycopg import sql
 
@@ -56,6 +57,14 @@ def _guarded() -> dict[recovery.MigrationKey, int]:
         key: len(migration.operations)
         for key, migration in MigrationLoader(None).disk_migrations.items()
         if isinstance(migration, recovery.GuardedMigration)
+    }
+
+
+def _atomic_schemas() -> set[recovery.MigrationKey]:
+    return {
+        key
+        for key, migration in MigrationLoader(None).disk_migrations.items()
+        if isinstance(migration, recovery.AtomicSchemaMigration)
     }
 
 
@@ -107,7 +116,7 @@ def plan(django_db_blocker: DjangoDbBlocker) -> Iterator[Plan]:
 
         def before(action: str, *args: object) -> None:
             if action == "apply_start" and isinstance(
-                args[0], recovery.GuardedMigration
+                args[0], (recovery.GuardedMigration, recovery.AtomicSchemaMigration)
             ):
                 migration = args[0]
                 source[migration.app_label, migration.name] = templates.enter_context(
@@ -116,7 +125,7 @@ def plan(django_db_blocker: DjangoDbBlocker) -> Iterator[Plan]:
 
         executor = MigrationExecutor(db, progress_callback=before)
         executor.migrate(executor.loader.graph.leaf_nodes())
-        assert source.keys() == _guarded().keys()
+        assert source.keys() == _guarded().keys() | _atomic_schemas()
         yield Plan(
             admin_url, source, migration_preflight.schema_digest(db), _applied(db)
         )
@@ -302,21 +311,29 @@ def _row_image(db: DatabaseWrapper, admin_url: str) -> str:
     with psycopg.connect(dsn) as observer:
         relations = observer.execute(
             """
-            SELECT n.nspname, c.relname
+            SELECT n.nspname, c.relname, c.relkind
             FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND n.nspname NOT LIKE 'pg_toast%%'
-                AND c.relkind IN ('r', 'S', 'm')
+                AND c.relkind IN ('r', 'S', 'm', 'p')
             ORDER BY 1, 2
             """
         ).fetchall()
-        for namespace, table in relations:
-            rows = observer.execute(
-                sql.SQL("SELECT to_jsonb(r)::text FROM {} r ORDER BY 1").format(
-                    sql.Identifier(namespace, table)
+        for namespace, table, kind in relations:
+            relation = sql.Identifier(namespace, table)
+            # Sequences have state but no composite row type. Keep the exact
+            # allocator state in the oracle instead of dropping sequences.
+            query = (
+                sql.SQL("SELECT last_value, log_cnt, is_called FROM {}").format(
+                    relation
                 )
-            ).fetchall()
+                if kind == "S"
+                else sql.SQL("SELECT to_jsonb(r)::text FROM {} r ORDER BY 1").format(
+                    relation
+                )
+            )
+            rows = observer.execute(query).fetchall()
             digest.update(json.dumps([namespace, table, rows]).encode())
     return digest.hexdigest()
 
@@ -463,6 +480,43 @@ def test_approved_base_vacuum_full_does_not_refuse_forward_plan(plan: Plan) -> N
         _run(db)
         assert _applied(db) == plan.head_ledger
         assert migration_preflight.schema_digest(db) == plan.head_schema
+
+
+@pytest.mark.parametrize("key", sorted(_atomic_schemas()), ids=".".join)
+def test_atomic_schema_and_django_record_share_a_commit(
+    key: recovery.MigrationKey, plan: Plan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _clone(plan.admin_url, plan.source[key]) as db, _default_connection(db):
+        before = migration_preflight.schema_digest(db)
+        applied = _applied(db)
+        initial_progress = recovery.progress(db)
+        record = MigrationRecorder.record_applied
+        inserted = Event()
+
+        def interrupt(recorder: MigrationRecorder, app: str, name: str) -> None:
+            record(recorder, app, name)
+            if (app, name) == key:
+                assert db.in_atomic_block
+                assert key in recorder.applied_migrations()
+                inserted.set()
+                raise InterruptionError
+
+        executor = MigrationExecutor(db)
+        assert [str(m) for m, _ in executor.migration_plan([key])] == [".".join(key)]
+        with monkeypatch.context() as patch:
+            patch.setattr(MigrationRecorder, "record_applied", interrupt)
+            with pytest.raises(InterruptionError):
+                executor.migrate([key])
+        assert inserted.is_set()
+        db.close()
+        assert _applied(db) == applied
+        assert migration_preflight.schema_digest(db) == before
+        assert recovery.progress(db) == initial_progress
+
+        MigrationExecutor(db).migrate([key])
+        assert _applied(db) == applied | {key}
+        assert migration_preflight.schema_digest(db) != before
+        assert recovery.progress(db) == initial_progress
 
 
 @pytest.mark.parametrize("key", [INTAKE, AI])
