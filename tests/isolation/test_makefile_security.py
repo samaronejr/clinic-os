@@ -167,7 +167,7 @@ def test_ci_treats_database_urls_as_opaque_environment_data(tmp_path: Path) -> N
     assert not canary.exists(), _output(result)
 
 
-def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
+def test_make_diagnostics_redact_passwords_and_database_urls() -> None:
     # Given: unique sentinels stand in for credentials and URLs
     sentinels = (
         "sentinel-postgres-secret",
@@ -179,10 +179,9 @@ def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
         "postgresql://super:sentinel-superuser@localhost:55413/clinic",
     )
 
-    # When: Make renders each database-facing recipe without executing it
+    # When: real database-facing recipes run with external commands inert
     bootstrap = _run_make(
         (
-            "-n",
             "db-bootstrap",
             "DOCKER=true",
             "POSTGRES_CONTAINER=fixture",
@@ -194,9 +193,8 @@ def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
     )
     posture = _run_make(
         (
-            "-n",
             "db-posture",
-            "DOCKER=true",
+            "UV=true",
             "POSTGRES_CONTAINER=fixture",
             f"APP_DATABASE_URL={sentinels[4]}",
         )
@@ -214,10 +212,11 @@ def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
     )
     output = _output(bootstrap) + _output(posture) + _output(ci)
 
-    # Then: dry-run diagnostics expose variable names but no credential values
+    # Then: live recipes succeed and dry run refuses without exposing credentials
     assert bootstrap.returncode == 0, _output(bootstrap)
     assert posture.returncode == 0, _output(posture)
-    assert ci.returncode == 0, _output(ci)
+    assert ci.returncode == 2, _output(ci)
+    assert "CI gates do not support" in ci.stderr
     assert all(sentinel not in output for sentinel in sentinels), output
 
 
