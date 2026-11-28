@@ -1,20 +1,9 @@
 .DEFAULT_GOAL := isolated-db-up
-override ci_gate_goals := ci ci-browser-contract ci-image-contracts
 
-# A caller can hide the real goals by assigning MAKECMDGOALS. When
-# the scope is unknown, fail closed for unsafe or masked modes.
-override ci_mode_scope := $(if $(filter command,$(origin MAKECMDGOALS)),unknown,$(filter $(ci_gate_goals),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))))
-ifneq ($(ci_mode_scope),)
-ifneq ($(filter command,$(origin MAKEFLAGS) $(origin MFLAGS)),)
-$(error CI gates do not support overriding MAKEFLAGS or MFLAGS as Make variables)
-endif
-# GNU Make puts its active short flag letters in the first word, before
-# long options and variable assignments. Check letters in that word only.
-override make_mode_letters := $(filter-out -%,$(firstword $(MAKEFLAGS))) $(patsubst -%,%,$(filter-out --%,$(firstword $(MFLAGS))))
-ifneq ($(strip $(foreach flag,i k n t q,$(findstring $(flag),$(make_mode_letters)))),)
-$(error CI gates do not support --ignore-errors (-i), --keep-going (-k), --dry-run (-n), --touch (-t), or --question (-q))
-endif
-endif
+# Expand inside each gate; '+' forces expansion even under --touch.
+# Refuse masked flag variables and inspect only GNU Make's short-flag word.
+override strict_make_flags = $(filter-out --%,$(firstword -$(MAKEFLAGS)))
+override require_strict_make = $(if $(filter command,$(origin MAKEFLAGS) $(origin MFLAGS)),$(error CI gates do not support overriding MAKEFLAGS or MFLAGS as Make variables))$(if $(strip $(foreach flag,i k n t q,$(findstring $(flag),$(strict_make_flags)))),$(error CI gates do not support --ignore-errors (-i), --keep-going (-k), --dry-run (-n), --touch (-t), or --question (-q)))
 
 COMPOSE ?= docker compose
 DOCKER ?= docker
@@ -225,10 +214,10 @@ restore-rehearsal:
 		--attachment-root "$${RESTORE_ATTACHMENT_ROOT:?}"
 
 ci-browser-contract:
-	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local browser
+	+$(call require_strict_make)$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local browser
 
 ci-image-contracts:
-	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local image
+	+$(call require_strict_make)$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local image
 
 current-source-snapshot:
 	@set --; \
@@ -243,5 +232,5 @@ current-source-snapshot:
 
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
-	$(UV) run --locked --all-groups python -m ops.testing.ci_local quality \
+	+$(call require_strict_make)$(UV) run --locked --all-groups python -m ops.testing.ci_local quality \
 		--make "$(MAKE)" --workers "$(CI_PYTEST_WORKERS)"

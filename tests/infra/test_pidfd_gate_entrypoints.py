@@ -190,6 +190,47 @@ def test_make_rejects_unsafe_modes_before_any_dispatch(
     assert not (tmp_path / "uv-dispatched").exists()
 
 
+@pytest.mark.parametrize(
+    ("flags", "argv"),
+    [
+        ("-i", ("ci-browser-contract",)),
+        ("-n", (".DEFAULT_GOAL=./ci",)),
+        ("-i", ("db-inputs", ".EXTRA_PREREQS=ci-browser-contract")),
+        ("-n", ("ci-via-prerequisite",)),
+        ("-i -- MFLAGS=", (".DEFAULT_GOAL=./ci-browser-contract",)),
+        ("-i", ("recursive-ci",)),
+    ],
+)
+def test_make_checks_modes_when_gate_is_reached_indirectly(
+    tmp_path: Path, flags: str, argv: tuple[str, ...]
+) -> None:
+    makefile = tmp_path / "Makefile"
+    _ = makefile.write_text(
+        (ROOT / "Makefile").read_text() + "\n.PHONY: ci-via-prerequisite recursive-ci\n"
+        "ci-via-prerequisite: ci-browser-contract\n"
+        "recursive-ci:\n"
+        "\t+$(MAKE) ci-browser-contract; code=$$?; printf 'child=%s\\n' $$code\n"
+    )
+    status, stdout, stderr = asyncio.run(
+        _run(
+            "/usr/bin/make",
+            *argv,
+            "POSTGRES_CONTAINER=synthetic",
+            "UV=touch uv-dispatched;",
+            cwd=tmp_path,
+            env={**os.environ, "MAKEFLAGS": flags, "MAKECMDGOALS": "db-inputs"},
+        )
+    )
+    if argv == ("recursive-ci",):
+        # The external recursive caller can ignore the child's error; prove
+        # that the child itself refused rather than relying on the outer exit.
+        assert "child=2" in stdout.splitlines(), (stdout, stderr)
+    else:
+        assert status == 2, (stdout, stderr)
+    assert "CI gates do not support" in stderr
+    assert not (tmp_path / "uv-dispatched").exists()
+
+
 MAKE_EXEMPTIONS = {
     "bootstrap-clinic": ("manage.py bootstrap_clinic", "clinic administration"),
     "provision-staff": ("manage.py provision_staff", "clinic administration"),
@@ -212,16 +253,16 @@ GATE_RECIPE = re.compile(
     r'--workers "\$\(CI_PYTEST_WORKERS\)")'
 )
 WORKLOAD = re.compile(r"\bpytest\b|\bops(?:\.testing\.|/testing/)")
+MAKE_GUARD = "+$(call require_strict_make)"
 
 
-def _make_recipes(makefile: Path) -> dict[str, str]:
-    # -pRr emits GNU Make's database. Select an empty synthetic goal so no
-    # repository recipe executes and avoid the intentionally forbidden -q.
+def _make_rules(makefile: Path) -> dict[str, tuple[set[str], str]]:
+    # Query GNU Make's database through an empty synthetic goal, not a gate.
     sentinel = "__pidfd_inventory__"
     status, database, stderr = asyncio.run(
         _run(
             "/usr/bin/make",
-            "-pRr",
+            "-pRrq",
             "-f",
             str(makefile),
             "-f",
@@ -233,26 +274,44 @@ def _make_recipes(makefile: Path) -> dict[str, str]:
             stdin=f"{sentinel}: ;\n",
         )
     )
-    assert status == 0, stderr
+    assert status in {0, 1}, stderr
     files = database.split("\n# Files\n", 1)[1].split("\n# files hash-table", 1)[0]
-    recipes = {}
+    rules: dict[str, tuple[set[str], str]] = {}
     for block in files.split("\n\n"):
-        target = re.search(r"^([^\s:#]+):", block, re.MULTILINE)
+        target = re.search(r"^([^\s:#]+):([^\n]*)$", block, re.MULTILINE)
         commands = [
             line.strip() for line in block.splitlines() if line.startswith("\t")
         ]
-        if target and commands and target[1] != sentinel:
+        if target and target[1] != sentinel:
             commands = [line.removesuffix("\\").rstrip() for line in commands]
-            recipes[target[1]] = " ".join(commands)
-    return recipes
+            dependencies = set(target[2].split()) - {"|"}
+            rules[target[1]] = dependencies, " ".join(commands)
+    return rules
+
+
+def _prerequisite_closure(
+    rules: dict[str, tuple[set[str], str]], target: str
+) -> set[str]:
+    seen: set[str] = set()
+    pending = [target]
+    while pending:
+        current = pending.pop()
+        if current not in seen:
+            seen.add(current)
+            pending.extend(rules.get(current, (set(), ""))[0])
+    return seen
 
 
 def _assert_make_guards(makefile: Path) -> None:
-    recipes = _make_recipes(makefile)
-    assert MAKE_EXEMPTIONS.keys() <= recipes.keys(), "stale Make gate exemption"
-    for target, recipe in recipes.items():
-        if GATE_RECIPE.fullmatch(recipe):
-            _assert_make_scope(makefile, target)
+    rules = _make_rules(makefile)
+    assert MAKE_EXEMPTIONS.keys() <= rules.keys(), "stale Make gate exemption"
+    gates = set()
+    for target, (_, recipe) in rules.items():
+        if not recipe:
+            continue
+        if GATE_RECIPE.fullmatch(recipe.removeprefix(MAKE_GUARD)):
+            assert recipe.startswith(MAKE_GUARD), f"missing Make guard: {target}"
+            gates.add(target)
             continue
         assert target in MAKE_EXEMPTIONS, f"unguarded Make target: {target}"
         command, reason = MAKE_EXEMPTIONS[target]
@@ -260,12 +319,16 @@ def _assert_make_guards(makefile: Path) -> None:
         assert not WORKLOAD.search(recipe.replace(command, "", 1)), (
             f"unguarded workload in {target} ({reason})"
         )
+    assert gates, "no Make gate recipes found"
+    for target in rules.keys() - {".PHONY", ".DEFAULT"}:
+        if _prerequisite_closure(rules, target) & gates:
+            _assert_make_scope(makefile, target)
 
 
 def _assert_make_scope(makefile: Path, target: str) -> None:
-    # -n must fail for every discovered gate, but remain available for ordinary
-    # recipes. Set MAKE explicitly so recursive commands could not execute.
-    for goals in ((target,), (f".DEFAULT_GOAL={target}",), ("db-inputs",)):
+    # All paths to the guarded recipe must refuse, including default and alias
+    # paths. Use an inert uv command in case the rule no longer refuses.
+    for goals in ((target,), (f".DEFAULT_GOAL={target}",)):
         status, _, stderr = asyncio.run(
             _run(
                 "/usr/bin/make",
@@ -280,11 +343,8 @@ def _assert_make_scope(makefile: Path, target: str) -> None:
                 env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
             )
         )
-        if goals == ("db-inputs",):
-            assert status == 0, stderr
-        else:
-            assert status == 2, f"Make guard scope omits {target}: {goals}"
-            assert "CI gates do not support" in stderr
+        assert status == 2, f"Make guard scope omits {target}: {goals}"
+        assert "CI gates do not support" in stderr
 
 
 def _assert_workflow_guards(workflow: Path) -> None:
@@ -319,15 +379,27 @@ def test_inventory_rejects_new_make_test_target(tmp_path: Path) -> None:
         _assert_make_guards(makefile)
 
 
-def test_inventory_rejects_new_make_gate_outside_flag_scope(tmp_path: Path) -> None:
+def test_inventory_rejects_new_make_gate_missing_macro(tmp_path: Path) -> None:
     makefile = tmp_path / "Makefile"
     _ = makefile.write_text(
         (ROOT / "Makefile").read_text() + "\n.PHONY: unscoped-gate\nunscoped-gate:\n"
         "\t$(UV) run --frozen --no-sync --no-env-file python -m "
         "ops.testing.ci_local image\n"
     )
-    with pytest.raises(AssertionError, match="Make guard scope omits unscoped-gate"):
+    with pytest.raises(AssertionError, match="missing Make guard: unscoped-gate"):
         _assert_make_guards(makefile)
+
+
+def test_inventory_follows_recipe_less_make_target(tmp_path: Path) -> None:
+    makefile = tmp_path / "Makefile"
+    _ = makefile.write_text(
+        (ROOT / "Makefile").read_text()
+        + "\n.PHONY: ci-via-prerequisite\nci-via-prerequisite: ci-browser-contract\n"
+    )
+    rules = _make_rules(makefile)
+    assert rules["ci-via-prerequisite"] == ({"ci-browser-contract"}, "")
+    assert "ci-browser-contract" in _prerequisite_closure(rules, "ci-via-prerequisite")
+    _assert_make_guards(makefile)
 
 
 @pytest.mark.parametrize("conditional", [False, True])
