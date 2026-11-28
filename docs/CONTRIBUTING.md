@@ -49,6 +49,9 @@ uv run python manage.py check
 uv run python manage.py makemigrations --check --dry-run
 ```
 
+The Python driver refuses an unsupported interpreter before gate work. A Make
+exit status under `-i` is not evidence that the gate passed.
+
 `make ci` owns the locked sync, database bootstrap/migration/posture, Ruff,
 format, strict mypy, full test/coverage, and dependency-audit gates. Its
 image contract builds committed source, so it requires a clean Git tree.

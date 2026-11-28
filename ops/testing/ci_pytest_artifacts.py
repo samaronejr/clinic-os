@@ -41,6 +41,7 @@ from ops.testing.isolation_common import (
     canonical_bytes,
     load_json,
 )
+from ops.testing.pidfd_preflight import require_pidfd_at_startup, write_hosted_record
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -592,6 +593,7 @@ def validate_combined(artifacts: Path, version: str, proof: JsonObject) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Combine one Python version's complete hosted shard artifacts."""
+    capabilities = require_pidfd_at_startup()
     parser = argparse.ArgumentParser(prog="python -m ops.testing.ci_pytest_artifacts")
     parser.add_argument("--python-version", choices=PYTHONS, required=True)
     parser.add_argument("--artifacts", type=Path, required=True)
@@ -606,6 +608,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         proof["coverage_percent"] = percent
         proof["coverage_sha256"] = _digest(arguments.output / "coverage.xml")
         _write(arguments.output / "report.json", proof)
+        write_hosted_record(arguments.output, arguments.python_version, capabilities)
     except (IsolationError, OSError, ValueError, CoverageException) as error:
         sys.stderr.write(f"ci-pytest-artifacts: {error}\n")
         return 2

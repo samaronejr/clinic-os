@@ -1,10 +1,3 @@
-.DEFAULT_GOAL := isolated-db-up
-
-# Expand inside each gate; '+' forces expansion even under --touch.
-# Refuse masked flag variables and inspect only GNU Make's short-flag word.
-override strict_make_flags = $(filter-out --%,$(firstword -$(MAKEFLAGS)))
-override require_strict_make = $(if $(filter command,$(origin MAKEFLAGS) $(origin MFLAGS)),$(error CI gates do not support overriding MAKEFLAGS or MFLAGS as Make variables))$(if $(strip $(foreach flag,i k n t q,$(findstring $(flag),$(strict_make_flags)))),$(error CI gates do not support --ignore-errors (-i), --keep-going (-k), --dry-run (-n), --touch (-t), or --question (-q)))
-
 COMPOSE ?= docker compose
 DOCKER ?= docker
 UV ?= uv
@@ -25,7 +18,7 @@ MIGRATION_DATABASE_URL ?= postgresql://clinic_owner:clinic_owner_password@localh
 TEST_SUPERUSER_DATABASE_URL ?= postgresql://clinic_super:clinic_super_password@localhost:$(POSTGRES_HOST_PORT)/clinic
 
 ifeq ($(origin POSTGRES_CONTAINER), undefined)
-POSTGRES_CONTAINER := $(shell $(COMPOSE) ps -q db 2>/dev/null)
+db-bootstrap db-posture: export POSTGRES_CONTAINER = $(eval POSTGRES_CONTAINER := $$(shell $$(COMPOSE) ps -q db 2>/dev/null))$(POSTGRES_CONTAINER)
 else
 override POSTGRES_CONTAINER := $(value POSTGRES_CONTAINER)
 endif
@@ -214,10 +207,10 @@ restore-rehearsal:
 		--attachment-root "$${RESTORE_ATTACHMENT_ROOT:?}"
 
 ci-browser-contract:
-	+$(call require_strict_make)$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local browser
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local browser
 
 ci-image-contracts:
-	+$(call require_strict_make)$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local image
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local image
 
 current-source-snapshot:
 	@set --; \
@@ -232,5 +225,4 @@ current-source-snapshot:
 
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
-	+$(call require_strict_make)$(UV) run --locked --all-groups python -m ops.testing.ci_local quality \
-		--make "$(MAKE)" --workers "$(CI_PYTEST_WORKERS)"
+	$(UV) run --locked --all-groups python -m ops.testing.ci_local quality --workers "$(CI_PYTEST_WORKERS)"

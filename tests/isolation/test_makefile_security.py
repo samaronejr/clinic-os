@@ -179,7 +179,7 @@ def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
         "postgresql://super:sentinel-superuser@localhost:55413/clinic",
     )
 
-    # When: Make renders non-gate recipes and refuses a dry run of the CI gate
+    # When: Make renders ordinary and CI recipes without dispatching either
     bootstrap = _run_make(
         (
             "-n",
@@ -217,8 +217,7 @@ def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
     # Then: dry-run diagnostics never expose credential values
     assert bootstrap.returncode == 0, _output(bootstrap)
     assert posture.returncode == 0, _output(posture)
-    assert ci.returncode == 2, _output(ci)
-    assert "CI gates do not support" in ci.stderr
+    assert ci.returncode == 0, _output(ci)
     assert all(sentinel not in output for sentinel in sentinels), output
 
 

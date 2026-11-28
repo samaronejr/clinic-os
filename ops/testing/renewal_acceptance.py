@@ -26,6 +26,7 @@ Exits 0 with a JSON summary, 2 with a failure list on stderr.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -35,7 +36,13 @@ from typing import Final
 from ops.testing.ci_pytest_artifacts import load_version, validate_combined
 from ops.testing.ci_pytest_partition import PYTHONS, SHARDS
 from ops.testing.isolation_common import IsolationError
+from ops.testing.pidfd_preflight import (
+    CAPABILITIES,
+    RECORD_NAME,
+    require_pidfd_at_startup,
+)
 from ops.testing.renewal_runner import DEFAULT_ENGINE, ENGINES, SUITES
+from ops.testing.validate_action_pins import SNAPSHOT, _job_blocks, _steps
 
 REQUIRED_JOBS: Final = (
     "test",
@@ -55,6 +62,185 @@ DIGEST_HEX_LENGTH: Final = 64
 SHA_HEX_LENGTH: Final = 40
 EXPECTED_OPTIONS: Final = 3
 JOB_BLOCK: Final = re.compile(r"(?m)^  ([a-z][a-z0-9-]*):\s*$")
+PREFLIGHT_STEP = [
+    "      - name: Verify Python pidfd support",
+    "        run: uv run --locked python -m ops.testing.pidfd_preflight",
+]
+PIN_MANIFEST = Path(__file__).with_name("ci-python-downloads.json")
+SINGLETONS = ("contracts", "worker-integration", "migration-upgrade", "actionlint")
+
+
+def _workflow_guard_failures(workflow: str) -> list[str]:
+    """Validate the closed workflow step structure before trusting job results."""
+    lines = workflow.splitlines()
+    failures = []
+    if any(re.match(r"^defaults\s*:", line) for line in lines):
+        failures.append("workflow sets defaults")
+    try:
+        blocks = _job_blocks(lines)
+    except IsolationError as error:
+        return [*failures, str(error)]
+    names = [name for name, _ in blocks]
+    if sorted(names) != sorted((*REQUIRED_JOBS, "renewal-acceptance")):
+        failures.append("workflow jobs do not match the required evidence producers")
+    for name, block in blocks:
+        if any(re.match(r"^    (?:defaults|continue-on-error)\s*:", s) for s in block):
+            failures.append(f"workflow {name}: overrides job execution defaults")
+        # The action validator splits steps on these first keys. Refuse other
+        # forms rather than accidentally folding a workload into its predecessor.
+        if "    steps:" in block and any(
+            line.startswith("      -")
+            and not re.match(r"^      - (?:name|run|uses):", line)
+            for line in block[block.index("    steps:") + 1 :]
+        ):
+            failures.append(f"workflow {name}: unsupported step syntax")
+        steps = [[line for line in step if line.strip()] for step in _steps(block)]
+        run_steps = [i for i, step in enumerate(steps) if _step_field(step, "run")]
+        if (
+            not run_steps
+            or _step_field(steps[run_steps[0]], "run") != SNAPSHOT
+            or steps[run_steps[0] + 1 : run_steps[0] + 2] != [PREFLIGHT_STEP]
+        ):
+            failures.append(f"workflow {name}: missing unconditional pidfd preflight")
+        failures.extend(_step_guard_failures(name, steps))
+    return failures
+
+
+def _step_guard_failures(name: str, steps: list[list[str]]) -> list[str]:
+    failures = []
+    for step in steps:
+        run = _step_field(step, "run") is not None
+        condition = _step_field(step, "if")
+        if run and _step_field(step, "continue-on-error") is not None:
+            failures.append(f"workflow {name}: run step ignores errors")
+        if condition is not None and (
+            not condition or condition.startswith((">", "|"))
+        ):
+            failures.append(f"workflow {name}: unsupported step condition")
+        if re.search(
+            r"\b(?:always|failure|cancelled)\s*\(", condition or "", re.IGNORECASE
+        ):
+            uses = _step_field(step, "uses") or ""
+            if run or not uses.startswith("actions/upload-artifact@"):
+                failures.append(f"workflow {name}: step can run after failure")
+    return failures
+
+
+def _step_field(step: list[str], key: str) -> str | None:
+    for line in step:
+        match = re.fullmatch(rf" {{6}}(?:- |  ){key}\s*:\s*(.*)", line)
+        if match:
+            return match[1]
+    return None
+
+
+def _expected_preflights(
+    artifacts: Path, legs: set[tuple[str, str]]
+) -> list[tuple[Path, str, str, str]]:
+    records = [
+        (artifacts / f"renewal-{job}" / RECORD_NAME, job, job, "3.12")
+        for job in SINGLETONS
+    ]
+    for version in PYTHONS:
+        records.append(
+            (
+                artifacts / f"renewal-coverage-py{version}" / RECORD_NAME,
+                "python-coverage",
+                version,
+                version,
+            )
+        )
+        records.extend(
+            (
+                artifacts / f"renewal-python-py{version}-shard-{shard}" / RECORD_NAME,
+                "test",
+                str(shard),
+                version,
+            )
+            for shard in SHARDS
+        )
+    for suite, engine in sorted(legs):
+        label = artifact_label(suite, engine)
+        reports = list(artifacts.glob(f"*/{label}/report.json"))
+        if len(reports) == 1:
+            records.append(
+                (reports[0].with_name(RECORD_NAME), "renewal-browser", label, "3.12")
+            )
+    return records
+
+
+def _valid_preflight(
+    record: object, job: str, slot: str, version: str, revision: str
+) -> bool:
+    if not isinstance(record, dict):
+        return False
+    interpreter = record.get("interpreter")
+    build_hash = record.get("build_sha256")
+    capabilities = record.get("capabilities")
+    run_id = record.get("run_id")
+    return (
+        set(record)
+        == {
+            "schema_version",
+            "result",
+            "job",
+            "slot",
+            "revision_sha",
+            "run_id",
+            "interpreter",
+            "version",
+            "build_sha256",
+            "capabilities",
+        }
+        and type(record["schema_version"]) is int
+        and record["schema_version"] == 1
+        and record["result"] == "PASS"
+        and record["job"] == job
+        and record["slot"] == slot
+        and record["version"] == version
+        and record["revision_sha"] == revision
+        and isinstance(interpreter, str)
+        and Path(interpreter).is_absolute()
+        and isinstance(build_hash, str)
+        and re.fullmatch(r"[0-9a-f]{64}", build_hash) is not None
+        and isinstance(capabilities, dict)
+        and set(capabilities) == set(CAPABILITIES)
+        and all(present is True for present in capabilities.values())
+        and isinstance(run_id, str)
+        and re.fullmatch(r"[0-9]+", run_id) is not None
+    )
+
+
+def _preflight_failures(
+    artifacts: Path, legs: set[tuple[str, str]], revision: str, run_id: str | None
+) -> list[str]:
+    metadata = json.loads(PIN_MANIFEST.read_text(encoding="utf-8"))
+    pinned = {
+        f"{item['major']}.{item['minor']}": (
+            f"{item['major']}.{item['minor']}.{item['patch']}"
+        )
+        for item in metadata.values()
+    }
+    failures = []
+    runs = set()
+    builds: dict[str, set[str]] = {}
+    for path, job, slot, minor in _expected_preflights(artifacts, legs):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            record = None
+        if not isinstance(record, dict) or not _valid_preflight(
+            record, job, slot, pinned[minor], revision
+        ):
+            failures.append(f"pidfd preflight {job}/{slot}: missing or invalid PASS")
+            continue
+        runs.add(record["run_id"])
+        builds.setdefault(minor, set()).add(record["build_sha256"])
+    if len(runs) > 1 or (run_id is not None and runs != {run_id}):
+        failures.append("pidfd preflight records disagree with the hosted run")
+    if any(len(hashes) != 1 for hashes in builds.values()):
+        failures.append("pidfd preflight records disagree on interpreter build hash")
+    return failures
 
 
 def _shard_entries(workflow: str) -> tuple[list[str], list[str]]:
@@ -309,10 +495,17 @@ def _report_failures(
     return failures, identities
 
 
-def validate(workflow: str, needs: dict[str, object], artifacts: Path) -> list[str]:
+def validate(
+    workflow: str,
+    needs: dict[str, object],
+    artifacts: Path,
+    *,
+    hosted_source: tuple[str, str] | None = None,
+) -> list[str]:
     """Return every acceptance failure; an empty list means accepted."""
     registered = set(SUITES)
     failures = _needs_failures(needs)
+    failures.extend(_workflow_guard_failures(workflow))
     binding, bound = _binding_failures(workflow, registered)
     failures.extend(binding)
     # Every registered suite owes a Chromium report even when its binding is
@@ -325,11 +518,18 @@ def validate(workflow: str, needs: dict[str, object], artifacts: Path) -> list[s
     identities.update(python_identities)
     if not failures and len(identities) != 1:
         failures.append("suite reports disagree on the tested source revision")
+    if len(identities) == 1:
+        revision, _ = next(iter(identities))
+        if hosted_source is not None and revision != hosted_source[0]:
+            failures.append("tested revision differs from the hosted checkout")
+        run_id = hosted_source[1] if hosted_source is not None else None
+        failures.extend(_preflight_failures(artifacts, legs, revision, run_id))
     return failures
 
 
 def main(argv: list[str] | None = None) -> int:
     """Validate hosted renewal evidence and exit 0/2."""
+    require_pidfd_at_startup()
     arguments = argv if argv is not None else sys.argv[1:]
     options: dict[str, str] = {}
     index = 0
@@ -356,6 +556,9 @@ def main(argv: list[str] | None = None) -> int:
         Path(options["--workflow"]).read_text(encoding="utf-8"),
         needs_raw if isinstance(needs_raw, dict) else {},
         Path(options["--artifacts"]),
+        hosted_source=(os.environ["GITHUB_SHA"], os.environ["GITHUB_RUN_ID"])
+        if os.environ.get("GITHUB_ACTIONS") == "true"
+        else None,
     )
     if failures:
         for failure in failures:

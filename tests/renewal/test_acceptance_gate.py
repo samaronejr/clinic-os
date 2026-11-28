@@ -10,17 +10,23 @@ revisions.
 from __future__ import annotations
 
 import json
+import re
+import sys
 from pathlib import Path
 
 import pytest
+from ops.testing import ci_hosted_gate
 from ops.testing.ci_pytest_partition import SHARDS
+from ops.testing.pidfd_preflight import CAPABILITIES, RECORD_NAME
 from ops.testing.renewal_acceptance import (
+    PREFLIGHT_STEP,
     REQUIRED_JOBS,
     _binding_failures,
     artifact_label,
     validate,
 )
 from ops.testing.renewal_runner import SUITES
+from ops.testing.validate_action_pins import SNAPSHOT
 
 from infra.ci_shard_support import write_python_artifacts
 
@@ -28,36 +34,11 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 
 FIRST_SUITE = sorted(SUITES)[0]
 
-WORKFLOW = """\
-jobs:
-  test:
-    name: Python ${{ matrix.python-version }} shard ${{ matrix.shard }}/4
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
-        shard: [1, 2, 3, 4]
-    steps: []
-  python-coverage:
-    name: Python ${{ matrix.python-version }} combined coverage and census
-    needs: [test]
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
-    steps: []
-  renewal-browser:
-    strategy:
-      matrix:
-        shard:
-%s
-  renewal-acceptance:
-    needs: [test, python-coverage, contracts, renewal-browser, worker-integration,
-            migration-upgrade, actionlint]
-"""
-
 
 def _workflow(suites: list[str] | None = None) -> str:
     shard = "\n".join(f'          - "{suite}"' for suite in (suites or sorted(SUITES)))
-    return WORKFLOW % shard
+    workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+    return re.sub(r'(?m)(?:^          - "[^"]*"\n)+', shard + "\n", workflow, count=1)
 
 
 def _needs(**overrides: object) -> dict[str, object]:
@@ -93,6 +74,28 @@ def _report(  # noqa: PLR0913 - fixture builder needs its switches
     }
 
 
+def _write_preflight(
+    directory: Path, job: str, slot: str, minor: str, revision: str
+) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    _ = (directory / RECORD_NAME).write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "result": "PASS",
+                "job": job,
+                "slot": slot,
+                "revision_sha": revision,
+                "run_id": "1234",
+                "interpreter": "/usr/bin/python",
+                "version": {"3.12": "3.12.13", "3.13": "3.13.14"}[minor],
+                "build_sha256": "a" * 64,
+                "capabilities": dict.fromkeys(CAPABILITIES, True),
+            },
+        ),
+    )
+
+
 def _write_suite(  # noqa: PLR0913 - fixture builder needs its switches
     root: Path,
     suite: str,
@@ -107,6 +110,9 @@ def _write_suite(  # noqa: PLR0913 - fixture builder needs its switches
 ) -> None:
     suite_dir = root / "shard" / artifact_label(suite, engine)
     (suite_dir / "browser").mkdir(parents=True, exist_ok=True)
+    _write_preflight(
+        suite_dir, "renewal-browser", artifact_label(suite, engine), "3.12", revision
+    )
     report = (
         report
         if report is not None
@@ -139,12 +145,180 @@ def _populate(
     for suite in sorted(SUITES):
         _write_suite(root, suite, digest=digest, revision=revision, tree=tree)
     write_python_artifacts(root, revision=revision, tree=tree)
+    for job in ("contracts", "worker-integration", "migration-upgrade", "actionlint"):
+        _write_preflight(root / f"renewal-{job}", job, job, "3.12", revision)
+    for version in ("3.12", "3.13"):
+        _write_preflight(
+            root / f"renewal-coverage-py{version}",
+            "python-coverage",
+            version,
+            version,
+            revision,
+        )
+        for shard in SHARDS:
+            _write_preflight(
+                root / f"renewal-python-py{version}-shard-{shard}",
+                "test",
+                str(shard),
+                version,
+                revision,
+            )
     return root
 
 
 def test_complete_evidence_is_accepted(tmp_path: Path) -> None:
     artifacts = _populate(tmp_path / "artifacts")
     assert validate(_workflow(), _needs(), artifacts) == []
+
+
+@pytest.mark.parametrize("mutation", ["missing", "FAIL", "wrong-slot", "wrong-run"])
+def test_acceptance_requires_matching_pidfd_evidence(
+    tmp_path: Path, mutation: str
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    record = artifacts / "renewal-python-py3.13-shard-2" / RECORD_NAME
+    if mutation == "missing":
+        record.unlink()
+    else:
+        payload = json.loads(record.read_text())
+        match mutation:
+            case "FAIL":
+                payload["result"] = "FAIL"
+            case "wrong-slot":
+                payload["slot"] = "3"
+            case "wrong-run":
+                payload["run_id"] = "42"
+        _ = record.write_text(json.dumps(payload))
+    assert any(
+        failure.startswith("pidfd preflight")
+        for failure in validate(_workflow(), _needs(), artifacts)
+    )
+
+
+def test_successful_driver_that_skips_preflight_is_not_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    destination = artifacts / "renewal-actionlint"
+    (destination / RECORD_NAME).unlink()
+    for key, value in {
+        "GITHUB_ACTIONS": "true",
+        "GITHUB_JOB": "actionlint",
+        "GITHUB_SHA": "a" * 40,
+        "GITHUB_RUN_ID": "1234",
+    }.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(sys, "argv", ["ci_hosted_gate", "actionlint", str(destination)])
+    monkeypatch.setattr(ci_hosted_gate, "require_pidfd_at_startup", dict)
+
+    assert ci_hosted_gate.main() == 0
+    assert "pidfd preflight actionlint/actionlint: missing or invalid PASS" in validate(
+        _workflow(), _needs(), artifacts
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("if", "${{ false }}"),
+        ("continue-on-error", "true"),
+        ("shell", "bash"),
+        ("env", "{}"),
+    ],
+)
+def test_verdict_rejects_modified_preflight_step(
+    tmp_path: Path, key: str, value: str
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    guard = "\n".join(PREFLIGHT_STEP)
+    workflow = _workflow().replace(guard, guard + f"\n        {key}: {value}", 1)
+    assert "workflow test: missing unconditional pidfd preflight" in validate(
+        workflow, _needs(), artifacts
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "diagnostic"),
+    [
+        ("delete", "missing unconditional pidfd preflight"),
+        ("before", "missing unconditional pidfd preflight"),
+        ("after", "missing unconditional pidfd preflight"),
+        ("new-job", "workflow jobs do not match"),
+        ("always()", "step can run after failure"),
+        ("failure()", "step can run after failure"),
+        ("cancelled()", "step can run after failure"),
+        ("step-ignore", "run step ignores errors"),
+        ("job-ignore", "overrides job execution defaults"),
+        ("job-defaults", "overrides job execution defaults"),
+        ("workflow-defaults", "workflow sets defaults"),
+    ],
+)
+def test_verdict_rejects_workflow_guard_mutations(
+    tmp_path: Path, mutation: str, diagnostic: str
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    workflow = _workflow()
+    guard = "\n".join(PREFLIGHT_STEP) + "\n"
+    workload = "      - name: Install PDF inspection prerequisites\n"
+    match mutation:
+        case "delete":
+            workflow = workflow.replace(guard, "", 1)
+        case "before":
+            workflow = workflow.replace(guard, "", 1).replace(
+                "      - name: Authenticate repository snapshot\n",
+                guard + "      - name: Authenticate repository snapshot\n",
+                1,
+            )
+        case "after":
+            workflow = workflow.replace(guard, "", 1).replace(
+                workload, "      - run: pytest\n" + guard + workload, 1
+            )
+        case "new-job":
+            workflow += (
+                f"\n  added:\n    steps:\n      - run: {SNAPSHOT}\n"
+                "      - run: pytest\n"
+            )
+        case "always()" | "failure()" | "cancelled()":
+            workflow = workflow.replace(
+                workload, workload + f"        if: ${{{{ {mutation} }}}}\n", 1
+            )
+        case "step-ignore":
+            workflow = workflow.replace(
+                workload, workload + "        continue-on-error: true\n", 1
+            )
+        case "job-ignore":
+            workflow = workflow.replace(
+                "  test:\n", "  test:\n    continue-on-error: true\n", 1
+            )
+        case "job-defaults":
+            workflow = workflow.replace(
+                "  test:\n", "  test:\n    defaults: {run: {shell: bash}}\n", 1
+            )
+        case "workflow-defaults":
+            workflow = "defaults: {run: {shell: bash}}\n" + workflow
+    assert any(
+        diagnostic in failure for failure in validate(workflow, _needs(), artifacts)
+    )
+
+
+@pytest.mark.parametrize(
+    ("step", "diagnostic"),
+    [
+        ("      - if: failure()\n        run: pytest\n", "unsupported step syntax"),
+        (
+            "      - name: Work\n        run: pytest\n"
+            "        if: >-\n          failure()\n",
+            "unsupported step condition",
+        ),
+    ],
+)
+def test_verdict_refuses_unsupported_step_syntax(
+    tmp_path: Path, step: str, diagnostic: str
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    workload = "      - name: Install PDF inspection prerequisites\n"
+    workflow = _workflow().replace(workload, step + workload, 1)
+    assert f"workflow test: {diagnostic}" in validate(workflow, _needs(), artifacts)
 
 
 @pytest.mark.parametrize(

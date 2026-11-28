@@ -159,10 +159,14 @@ jobs:
           make db-bootstrap
           make migrate
           make db-posture
-          ops/testing/image_smoke.sh build --sha "$GITHUB_SHA"
-          ops/testing/browser_runner.sh probe --require-suite availability --require-suite patient --require-suite scheduling
-          uv run pytest -q --reuse-db tests/infra/test_schema_policy.py tests/audit/test_phase1_audit_migration.py tests/browser/test_browser_runner_contract.py tests/isolation/test_container_contract.py
-          ops/testing/tls_stack.sh smoke
+          uv run --locked python -m ops.testing.ci_hosted_gate contracts "$RUNNER_TEMP/contracts"
+      - name: Publish contract gate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-contracts
+          path: ${{ runner.temp }}/contracts/
+          retention-days: 3
 
   renewal-browser:
     name: Renewal browser suites ${{ matrix.shard }}
@@ -312,11 +316,7 @@ jobs:
           make db-bootstrap
           make migrate
           rm -f "$GITHUB_WORKSPACE/.omo"
-          install -d "$RUNNER_TEMP/worker-integration"
-          CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
-            --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
-            tests/renewal/test_broker_delivery.py \
-            tests/resilience/test_broker_worker_death.py tests/realtime/
+          CLINIC_BROKER_GATE=required uv run --locked python -m ops.testing.ci_hosted_gate worker-integration "$RUNNER_TEMP/worker-integration"
       - name: Publish broker gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -362,7 +362,7 @@ jobs:
           make migrate
           base_sha="$(git merge-base origin/main HEAD)"
           echo "upgrade base: $base_sha"
-          ops/testing/migration_upgrade.sh "$base_sha"
+          uv run --locked python -m ops.testing.ci_hosted_gate migration-upgrade "$RUNNER_TEMP/migration-upgrade" --base-sha "$base_sha"
       - name: Publish upgrade evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -439,4 +439,11 @@ jobs:
           ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
-        run: uv run --locked python ops/testing/validate_action_pins.py
+        run: uv run --locked python -m ops.testing.ci_hosted_gate actionlint "$RUNNER_TEMP/actionlint"
+      - name: Publish action provenance gate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-actionlint
+          path: ${{ runner.temp }}/actionlint/
+          retention-days: 3

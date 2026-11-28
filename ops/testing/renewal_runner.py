@@ -72,7 +72,11 @@ from ops.testing.isolation_common import (
     utc_now,
     write_no_replace,
 )
-from ops.testing.pidfd_preflight import PidfdUnavailableError, require_pidfd_support
+from ops.testing.pidfd_preflight import (
+    PidfdUnavailableError,
+    require_pidfd_support,
+    write_hosted_record,
+)
 from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
 from ops.testing.sentinel_runtime import (
@@ -1934,9 +1938,14 @@ def _browser(arguments: list[str]) -> int:
     engine = _resolve_engine(options.get("--engine"))
     display = DisplayRequest(options.get("--theme"), options.get("--density"))
     display.environment()  # refuse an unknown value before any provisioning
-    require_pidfd_support()
+    capabilities = require_pidfd_support()
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
+    write_hosted_record(
+        artifact_root,
+        suite if engine == DEFAULT_ENGINE else f"{suite}@{engine}",
+        capabilities,
+    )
     run_root = _run_root(options.get("--run-root"), artifact_root)
     record = options.get("--record")
     report = _run_browser_suite(

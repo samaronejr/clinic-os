@@ -86,7 +86,7 @@ def main() -> None:
     gates.add_parser("browser")
     gates.add_parser("image")
     quality = gates.add_parser("quality")
-    quality.add_argument("--make", required=True)
+    quality.add_argument("--make", default="make")
     quality.add_argument("--workers", required=True)
     args = parser.parse_args()
     if args.gate == "browser":
