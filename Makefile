@@ -1,3 +1,11 @@
+# A recipe failure cannot stop Make under -i. Reject it before gate dispatch.
+# GNU Make groups its active short flags into MFLAGS' first word.
+ifneq ($(filter ci ci-browser-contract ci-image-contracts,$(MAKECMDGOALS)),)
+ifneq ($(findstring i,$(filter-out --%,$(firstword $(MFLAGS)))),)
+$(error CI gates do not support --ignore-errors (-i))
+endif
+endif
+
 COMPOSE ?= docker compose
 DOCKER ?= docker
 UV ?= uv
@@ -220,7 +228,7 @@ ci-browser-contract:
 	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite clinical-inbox
 
 ci-image-contracts:
-	$(UV) run --frozen --no-sync --no-env-file pytest -q tests/isolation/test_container_contract.py
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_image_contracts
 	@sha="$$(git rev-parse HEAD)"; \
 		ops/testing/image_smoke.sh build --sha "$${sha}"
 	@ops/testing/tls_stack.sh smoke

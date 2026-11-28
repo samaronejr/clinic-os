@@ -84,6 +84,7 @@ from ops.testing.isolation_common import (
     ensure_private_directory,
     load_json,
 )
+from ops.testing.pidfd_preflight import require_pidfd_at_startup
 from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
@@ -140,6 +141,7 @@ def coverage_targets() -> tuple[str, ...]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run collect, parallel and serial phases; return the job's exit code."""
+    require_pidfd_at_startup()
     arguments = _parse(sys.argv[1:] if argv is None else argv)
     work_root = Path(arguments.work_root)
     if not work_root.is_absolute():

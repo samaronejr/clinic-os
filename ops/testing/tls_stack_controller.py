@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Never
 
 from ops.testing.isolation_docker_metadata import run_docker_command
+from ops.testing.pidfd_preflight import require_pidfd_at_startup
 from ops.testing.tls_materializer import materializer_lease
 
 VOLUME_COUNT = 6
@@ -15,6 +16,7 @@ VOLUME_COUNT = 6
 
 def main() -> None:
     """Dispatch the smoke form; standalone export requires a retained lease."""
+    require_pidfd_at_startup()
     if sys.argv[1:] == ["smoke"]:
         smoke_materializer(Path.cwd())
         return

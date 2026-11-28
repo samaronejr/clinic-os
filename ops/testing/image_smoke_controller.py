@@ -28,6 +28,7 @@ from ops.testing.isolation_common import (
     load_json,
     utc_now,
 )
+from ops.testing.pidfd_preflight import require_pidfd_at_startup
 from ops.testing.runtime_paths import runtime_directory
 
 CONTROLLER_ARGUMENT_COUNT = 4
@@ -35,6 +36,7 @@ CONTROLLER_ARGUMENT_COUNT = 4
 
 def main() -> None:
     """Dispatch the two closed controller forms from the shell grammar."""
+    require_pidfd_at_startup()
     if len(sys.argv) != CONTROLLER_ARGUMENT_COUNT or sys.argv[2] != "--sha":
         _fail("invalid controller invocation")
     operation, revision = sys.argv[1], sys.argv[3]

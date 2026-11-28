@@ -15,6 +15,7 @@ from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_runner_probe import probe_runner_image
 from ops.testing.image_smoke_controller import build_candidate, smoke_candidate
 from ops.testing.isolation_common import JsonObject, JsonValue, load_json
+from ops.testing.pidfd_preflight import require_pidfd_at_startup
 
 MINIMUM_ARGUMENTS: Final = 2
 HTTPS_ARGUMENTS: Final = 6
@@ -23,6 +24,7 @@ COMMAND_TIMEOUT_SECONDS: Final = 30
 
 def main() -> None:
     """Dispatch probe or fixture-only session after the shell validates grammar."""
+    require_pidfd_at_startup()
     if len(sys.argv) < MINIMUM_ARGUMENTS:
         _fail()
     operation = sys.argv[1]

@@ -102,6 +102,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Download Python shard evidence
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
@@ -391,6 +393,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Collect job outcomes
         env:
           NEEDS_JSON: ${{ toJson(needs) }}
@@ -427,6 +431,8 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Verify Python pidfd support
+        run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode

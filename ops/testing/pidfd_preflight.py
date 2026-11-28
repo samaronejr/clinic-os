@@ -48,5 +48,14 @@ def main() -> int:
     return 0
 
 
+def require_pidfd_at_startup() -> None:
+    """Exit before dispatch with one diagnostic if native pidfds are absent."""
+    try:
+        require_pidfd_support()
+    except PidfdUnavailableError as error:
+        sys.stderr.write(f"pidfd preflight: {error}\n")
+        raise SystemExit(1) from None
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
