@@ -54,6 +54,8 @@ jobs:
           command -v pdftoppm
           pdftotext -v 2>&1 | head -1
       - name: Run claimed database quality gates
+        env:
+          CLINIC_CI_ARTIFACT: renewal-python-py${{ matrix.python-version }}-shard-${{ matrix.shard }}
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
           ops/testing/ci_postgres.sh up
@@ -110,6 +112,8 @@ jobs:
           pattern: renewal-python-py${{ matrix.python-version }}-shard-*
           path: ${{ runner.temp }}/python-shards
       - name: Prove partition and combine coverage and detectors
+        env:
+          CLINIC_CI_ARTIFACT: renewal-coverage-py${{ matrix.python-version }}
         run: |
           uv sync --locked --all-groups
           uv run --frozen --no-sync --no-env-file python -m ops.testing.ci_pytest_artifacts \
@@ -159,7 +163,7 @@ jobs:
           make db-bootstrap
           make migrate
           make db-posture
-          uv run --locked python -m ops.testing.ci_hosted_gate contracts "$RUNNER_TEMP/contracts"
+          CLINIC_CI_ARTIFACT=renewal-contracts uv run --locked python -m ops.testing.ci_hosted_gate contracts "$RUNNER_TEMP/contracts"
       - name: Publish contract gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -247,6 +251,7 @@ jobs:
       - name: Run renewal browser suites
         env:
           RENEWAL_SUITES: ${{ matrix.shard }}
+          CLINIC_CI_ARTIFACT: renewal-browser-${{ strategy.job-index }}
         run: |
           set -u
           uv sync --locked --all-groups
@@ -316,7 +321,7 @@ jobs:
           make db-bootstrap
           make migrate
           rm -f "$GITHUB_WORKSPACE/.omo"
-          CLINIC_BROKER_GATE=required uv run --locked python -m ops.testing.ci_hosted_gate worker-integration "$RUNNER_TEMP/worker-integration"
+          CLINIC_BROKER_GATE=required CLINIC_CI_ARTIFACT=renewal-worker-integration uv run --locked python -m ops.testing.ci_hosted_gate worker-integration "$RUNNER_TEMP/worker-integration"
       - name: Publish broker gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -362,7 +367,7 @@ jobs:
           make migrate
           base_sha="$(git merge-base origin/main HEAD)"
           echo "upgrade base: $base_sha"
-          uv run --locked python -m ops.testing.ci_hosted_gate migration-upgrade "$RUNNER_TEMP/migration-upgrade" --base-sha "$base_sha"
+          CLINIC_CI_ARTIFACT=renewal-migration-upgrade uv run --locked python -m ops.testing.ci_hosted_gate migration-upgrade "$RUNNER_TEMP/migration-upgrade" --base-sha "$base_sha"
       - name: Publish upgrade evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -374,6 +379,9 @@ jobs:
   renewal-acceptance:
     name: Renewal RC acceptance
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     timeout-minutes: 10
     if: always()
     needs: [test, python-coverage, contracts, renewal-browser, worker-integration, migration-upgrade, actionlint]
@@ -396,20 +404,27 @@ jobs:
       - name: Verify Python pidfd support
         run: uv run --locked python -m ops.testing.pidfd_preflight
       - name: Collect job outcomes
+        id: producer-evidence
         env:
+          GH_TOKEN: ${{ github.token }}
           NEEDS_JSON: ${{ toJson(needs) }}
-        run: printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
+        run: |
+          printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
+          uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m ops.testing.ci_pidfd_producers \
+            .github/workflows/ci.yml "$RUNNER_TEMP/producers.json" "$GITHUB_OUTPUT"
       - name: Download renewal evidence
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
-          pattern: renewal-*
+          artifact-ids: ${{ steps.producer-evidence.outputs.artifact-ids }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/renewal-artifacts
       - name: Validate the renewal release candidate
         run: |
-          uv sync --locked --all-groups
           uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_acceptance \
             --workflow .github/workflows/ci.yml \
             --needs-json "$RUNNER_TEMP/needs.json" \
+            --producers "$RUNNER_TEMP/producers.json" \
             --artifacts "$RUNNER_TEMP/renewal-artifacts"
 
   actionlint:
@@ -439,7 +454,7 @@ jobs:
           ln -sfnT "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
-        run: uv run --locked python -m ops.testing.ci_hosted_gate actionlint "$RUNNER_TEMP/actionlint"
+        run: CLINIC_CI_ARTIFACT=renewal-actionlint uv run --locked python -m ops.testing.ci_hosted_gate actionlint "$RUNNER_TEMP/actionlint"
       - name: Publish action provenance gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

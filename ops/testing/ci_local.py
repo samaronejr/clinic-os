@@ -19,7 +19,12 @@ BROWSER_SUITES_DIGEST = (
 async def _run(*argv: str, capture: bool = False) -> str:
     process = await asyncio.create_subprocess_exec(
         *argv,
-        env={**os.environ, "UV_PROJECT_ENVIRONMENT": sys.prefix},
+        env={
+            **os.environ,
+            "CLINIC_CI_PYTHON": sys.executable,
+            "UV_PROJECT_ENVIRONMENT": sys.prefix,
+            "UV_PYTHON": sys.executable,
+        },
         stdout=asyncio.subprocess.PIPE if capture else None,
     )
     stdout, _ = await process.communicate()
@@ -81,6 +86,10 @@ async def _quality(make: str, workers: str) -> None:
 def main() -> None:
     """Refuse unsupported interpreters before any contract work is dispatched."""
     require_pidfd_at_startup()
+    selector = os.environ.get("UV_PYTHON", "")
+    if "/" in selector and Path(selector).resolve() != Path(sys.executable).resolve():
+        message = "ci-local: UV_PYTHON does not name the checked interpreter"
+        raise SystemExit(message)
     parser = argparse.ArgumentParser(description=__doc__)
     gates = parser.add_subparsers(dest="gate", required=True)
     gates.add_parser("browser")

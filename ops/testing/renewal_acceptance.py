@@ -31,18 +31,25 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final, cast
 
+import yaml
+
+from ops.testing.ci_pidfd_producers import SINGLETONS
 from ops.testing.ci_pytest_artifacts import load_version, validate_combined
 from ops.testing.ci_pytest_partition import PYTHONS, SHARDS
 from ops.testing.isolation_common import IsolationError
 from ops.testing.pidfd_preflight import (
     CAPABILITIES,
     RECORD_NAME,
+    RECORD_SCHEMA,
     require_pidfd_at_startup,
 )
 from ops.testing.renewal_runner import DEFAULT_ENGINE, ENGINES, SUITES
-from ops.testing.validate_action_pins import SNAPSHOT, _job_blocks, _steps
+from ops.testing.validate_action_pins import SNAPSHOT
+
+if TYPE_CHECKING:
+    from ops.testing.ci_pidfd_producers import Producer
 
 REQUIRED_JOBS: Final = (
     "test",
@@ -53,85 +60,71 @@ REQUIRED_JOBS: Final = (
     "migration-upgrade",
     "actionlint",
 )
-SHARD_LIST = re.compile(
-    r'renewal-browser:.*?shard:\s*\n((?:\s*-\s*"[^"]*"\s*\n)+)', re.DOTALL
-)
-SHARD_ENTRY = re.compile(r'-\s*"([^"]*)"')
-NEEDS_LIST = re.compile(r"renewal-acceptance:.*?needs:\s*\[([^\]]*)\]", re.DOTALL)
 DIGEST_HEX_LENGTH: Final = 64
 SHA_HEX_LENGTH: Final = 40
-EXPECTED_OPTIONS: Final = 3
-JOB_BLOCK: Final = re.compile(r"(?m)^  ([a-z][a-z0-9-]*):\s*$")
+REQUIRED_OPTIONS: Final = {"--workflow", "--needs-json", "--artifacts"}
+PREFLIGHT_RUN: Final = "uv run --locked python -m ops.testing.pidfd_preflight"
+PREFLIGHT_NAME: Final = "Verify Python pidfd support"
 PREFLIGHT_STEP = [
-    "      - name: Verify Python pidfd support",
-    "        run: uv run --locked python -m ops.testing.pidfd_preflight",
+    f"      - name: {PREFLIGHT_NAME}",
+    f"        run: {PREFLIGHT_RUN}",
 ]
 PIN_MANIFEST = Path(__file__).with_name("ci-python-downloads.json")
-SINGLETONS = ("contracts", "worker-integration", "migration-upgrade", "actionlint")
 
 
 def _workflow_guard_failures(workflow: str) -> list[str]:
-    """Validate the closed workflow step structure before trusting job results."""
-    lines = workflow.splitlines()
-    failures = []
-    if any(re.match(r"^defaults\s*:", line) for line in lines):
-        failures.append("workflow sets defaults")
+    """Validate effective YAML controls before trusting job results."""
     try:
-        blocks = _job_blocks(lines)
-    except IsolationError as error:
-        return [*failures, str(error)]
-    names = [name for name, _ in blocks]
-    if sorted(names) != sorted((*REQUIRED_JOBS, "renewal-acceptance")):
+        document = yaml.safe_load(workflow)
+    except yaml.YAMLError:
+        return ["workflow YAML is malformed"]
+    if not isinstance(document, dict) or not isinstance(document.get("jobs"), dict):
+        return ["workflow jobs are missing or malformed"]
+    jobs = document["jobs"]
+    failures = ["workflow sets defaults"] if "defaults" in document else []
+    if set(jobs) != {*REQUIRED_JOBS, "renewal-acceptance"}:
         failures.append("workflow jobs do not match the required evidence producers")
-    for name, block in blocks:
-        if any(re.match(r"^    (?:defaults|continue-on-error)\s*:", s) for s in block):
+    for name, job in jobs.items():
+        if not isinstance(job, dict):
+            failures.append(f"workflow {name}: invalid job")
+            continue
+        if {"defaults", "continue-on-error"} & job.keys():
             failures.append(f"workflow {name}: overrides job execution defaults")
-        # The action validator splits steps on these first keys. Refuse other
-        # forms rather than accidentally folding a workload into its predecessor.
-        if "    steps:" in block and any(
-            line.startswith("      -")
-            and not re.match(r"^      - (?:name|run|uses):", line)
-            for line in block[block.index("    steps:") + 1 :]
+        steps = job.get("steps")
+        if not isinstance(steps, list) or not all(
+            isinstance(step, dict) for step in steps
         ):
             failures.append(f"workflow {name}: unsupported step syntax")
-        steps = [[line for line in step if line.strip()] for step in _steps(block)]
-        run_steps = [i for i, step in enumerate(steps) if _step_field(step, "run")]
+            continue
+        first_run = next((i for i, step in enumerate(steps) if "run" in step), -1)
         if (
-            not run_steps
-            or _step_field(steps[run_steps[0]], "run") != SNAPSHOT
-            or steps[run_steps[0] + 1 : run_steps[0] + 2] != [PREFLIGHT_STEP]
+            first_run < 0
+            or steps[first_run].get("run") != SNAPSHOT
+            or "if" in steps[first_run]
+            or steps[first_run + 1 : first_run + 2]
+            != [{"name": PREFLIGHT_NAME, "run": PREFLIGHT_RUN}]
         ):
             failures.append(f"workflow {name}: missing unconditional pidfd preflight")
         failures.extend(_step_guard_failures(name, steps))
     return failures
 
 
-def _step_guard_failures(name: str, steps: list[list[str]]) -> list[str]:
+def _step_guard_failures(name: str, steps: list[dict[str, object]]) -> list[str]:
     failures = []
     for step in steps:
-        run = _step_field(step, "run") is not None
-        condition = _step_field(step, "if")
-        if run and _step_field(step, "continue-on-error") is not None:
+        run = "run" in step
+        condition = step.get("if")
+        if run and "continue-on-error" in step:
             failures.append(f"workflow {name}: run step ignores errors")
-        if condition is not None and (
-            not condition or condition.startswith((">", "|"))
+        if isinstance(condition, str) and re.search(
+            r"\b(?:always|failure|cancelled)\s*\(", condition, re.IGNORECASE
         ):
-            failures.append(f"workflow {name}: unsupported step condition")
-        if re.search(
-            r"\b(?:always|failure|cancelled)\s*\(", condition or "", re.IGNORECASE
-        ):
-            uses = _step_field(step, "uses") or ""
-            if run or not uses.startswith("actions/upload-artifact@"):
+            uses = step.get("uses")
+            if run or not (
+                isinstance(uses, str) and uses.startswith("actions/upload-artifact@")
+            ):
                 failures.append(f"workflow {name}: step can run after failure")
     return failures
-
-
-def _step_field(step: list[str], key: str) -> str | None:
-    for line in step:
-        match = re.fullmatch(rf" {{6}}(?:- |  ){key}\s*:\s*(.*)", line)
-        if match:
-            return match[1]
-    return None
 
 
 def _expected_preflights(
@@ -170,7 +163,8 @@ def _expected_preflights(
 
 
 def _valid_preflight(
-    record: object, job: str, slot: str, version: str, revision: str
+    record: object,
+    expected: dict[str, object],
 ) -> bool:
     if not isinstance(record, dict):
         return False
@@ -187,18 +181,18 @@ def _valid_preflight(
             "slot",
             "revision_sha",
             "run_id",
+            "run_attempt",
+            "artifact",
             "interpreter",
             "version",
             "build_sha256",
             "capabilities",
         }
         and type(record["schema_version"]) is int
-        and record["schema_version"] == 1
+        and record["schema_version"] == RECORD_SCHEMA
         and record["result"] == "PASS"
-        and record["job"] == job
-        and record["slot"] == slot
-        and record["version"] == version
-        and record["revision_sha"] == revision
+        and all(record.get(key) == value for key, value in expected.items())
+        and type(record["run_attempt"]) is int
         and isinstance(interpreter, str)
         and Path(interpreter).is_absolute()
         and isinstance(build_hash, str)
@@ -212,7 +206,11 @@ def _valid_preflight(
 
 
 def _preflight_failures(
-    artifacts: Path, legs: set[tuple[str, str]], revision: str, run_id: str | None
+    artifacts: Path,
+    legs: set[tuple[str, str]],
+    revision: str,
+    run_id: str | None,
+    producers: dict[str, Producer] | None,
 ) -> list[str]:
     metadata = json.loads(PIN_MANIFEST.read_text(encoding="utf-8"))
     pinned = {
@@ -225,12 +223,25 @@ def _preflight_failures(
     runs = set()
     builds: dict[str, set[str]] = {}
     for path, job, slot, minor in _expected_preflights(artifacts, legs):
+        artifact = path.relative_to(artifacts).parts[0]
+        producer = producers.get(artifact) if producers is not None else None
+        if producers is not None and producer is None:
+            failures.append(f"pidfd preflight {job}/{slot}: missing Actions producer")
+            continue
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             record = None
         if not isinstance(record, dict) or not _valid_preflight(
-            record, job, slot, pinned[minor], revision
+            record,
+            {
+                "job": job,
+                "slot": slot,
+                "version": pinned[minor],
+                "revision_sha": revision,
+                "artifact": artifact,
+                "run_attempt": producer["attempt"] if producer is not None else 1,
+            },
         ):
             failures.append(f"pidfd preflight {job}/{slot}: missing or invalid PASS")
             continue
@@ -243,17 +254,9 @@ def _preflight_failures(
     return failures
 
 
-def _shard_entries(workflow: str) -> tuple[list[str], list[str]]:
-    """Return (declared shard entries, parse failures) from the workflow text."""
-    match = SHARD_LIST.search(workflow)
-    if match is None:
-        return [], ["workflow renewal-browser shard matrix is missing"]
-    entries = [
-        entry
-        for shard in SHARD_ENTRY.findall(match.group(1))
-        for entry in shard.split(",")
-    ]
-    return [entry.strip() for entry in entries if entry.strip()], []
+def _matrix(job: object) -> object:
+    strategy = job.get("strategy") if isinstance(job, dict) else None
+    return strategy.get("matrix") if isinstance(strategy, dict) else None
 
 
 def _leg(entry: str) -> tuple[str, str] | None:
@@ -269,17 +272,6 @@ def _leg(entry: str) -> tuple[str, str] | None:
 def artifact_label(suite: str, engine: str) -> str:
     """Return the per-leg artifact directory name the CI shard writes."""
     return suite if engine == DEFAULT_ENGINE else f"{suite}@{engine}"
-
-
-def _declared_needs(workflow: str) -> list[str]:
-    match = NEEDS_LIST.search(workflow)
-    if match is None:
-        return []
-    return [
-        name.strip()
-        for name in match.group(1).split(",")
-        if name.strip() and name.strip() != "renewal-acceptance"
-    ]
 
 
 def _junit_counts(path: Path) -> tuple[int, int, int, int]:
@@ -382,15 +374,33 @@ def _binding_failures(
     workflow: str, registered: set[str]
 ) -> tuple[list[str], set[tuple[str, str]]]:
     """Return (failures, bound (suite, engine) legs) for the workflow contract."""
-    failures = _python_bindings(workflow)
-    declared = _declared_needs(workflow)
+    try:
+        document = yaml.safe_load(workflow)
+    except yaml.YAMLError:
+        return ["workflow YAML is malformed"], set()
+    jobs = document.get("jobs") if isinstance(document, dict) else None
+    if not isinstance(jobs, dict):
+        return ["workflow jobs are missing or malformed"], set()
+    failures = _python_bindings(jobs)
+    acceptance = jobs.get("renewal-acceptance")
+    needs = acceptance.get("needs") if isinstance(acceptance, dict) else None
+    declared = needs if isinstance(needs, list) else []
     failures.extend(
         f"acceptance job does not declare need on {job}"
         for job in REQUIRED_JOBS
         if job not in declared
     )
-    entries, parse_failures = _shard_entries(workflow)
-    failures.extend(parse_failures)
+    matrix = _matrix(jobs.get("renewal-browser"))
+    shards = matrix.get("shard") if isinstance(matrix, dict) else None
+    if (
+        not isinstance(matrix, dict)
+        or not isinstance(shards, list)
+        or not all(isinstance(shard, str) for shard in shards)
+    ):
+        return [*failures, "workflow renewal-browser shard matrix is missing"], set()
+    if set(matrix) != {"shard"}:
+        failures.append("workflow renewal-browser has unexpected matrix bindings")
+    entries = (value.strip() for shard in shards for value in shard.split(","))
     seen: set[tuple[str, str]] = set()
     for entry in entries:
         leg = _leg_failure(entry, registered)
@@ -408,51 +418,36 @@ def _binding_failures(
     return failures, seen
 
 
-def _python_bindings(workflow: str) -> list[str]:
+def _python_bindings(jobs: dict[str, object]) -> list[str]:
     """Require the closed version-by-shard matrix and both merge legs."""
-    blocks = list(JOB_BLOCK.finditer(workflow))
-    jobs = {
-        match.group(1): workflow[
-            match.end() : (
-                blocks[index + 1].start() if index + 1 < len(blocks) else len(workflow)
-            )
-        ]
-        for index, match in enumerate(blocks)
-    }
     failures: list[str] = []
-    for job, expected in (
-        ("test", {"python-version": list(PYTHONS), "shard": list(SHARDS)}),
-        ("python-coverage", {"python-version": list(PYTHONS)}),
+    for job, expected, suffix in (
+        (
+            "test",
+            {"python-version": list(PYTHONS), "shard": list(SHARDS)},
+            f" shard ${{{{ matrix.shard }}}}/{len(SHARDS)}",
+        ),
+        (
+            "python-coverage",
+            {"python-version": list(PYTHONS)},
+            " combined coverage and census",
+        ),
     ):
-        block = jobs.get(job, "")
-        matrix = re.search(r"(?ms)^      matrix:\n(.*?)^    steps:", block)
+        definition = jobs.get(job)
+        matrix = _matrix(definition)
         if matrix is None:
             failures.append(f"workflow {job} Python matrix is missing")
             continue
-        entries = re.findall(r"(?m)^        ([a-z-]+): (\[[^\n]+\])\s*$", matrix[1])
-        try:
-            parsed = {name: json.loads(raw) for name, raw in entries}
-        except json.JSONDecodeError:
-            parsed = {}
-        if (
-            len(entries) != len(expected)
-            or parsed != expected
-            or (
-                any(
-                    line.strip()
-                    and not re.fullmatch(r"        [a-z-]+: \[[^\n]+\]", line)
-                    for line in matrix[1].splitlines()
-                )
-            )
-        ):
+        if matrix != expected:
             failures.append(
                 f"workflow {job} does not bind every Python shard exactly once"
             )
-        if "name: Python ${{ matrix.python-version }}" not in block:
+        if not isinstance(definition, dict) or definition.get("name") != (
+            "Python ${{ matrix.python-version }}" + suffix
+        ):
             failures.append(f"workflow {job} Python job name is not machine-parseable")
-    if f"shard ${{{{ matrix.shard }}}}/{len(SHARDS)}" not in jobs.get("test", ""):
-        failures.append("workflow Python shard job names omit the shard identity")
-    if "    needs: [test]" not in jobs.get("python-coverage", ""):
+    coverage = jobs.get("python-coverage")
+    if not isinstance(coverage, dict) or coverage.get("needs") != ["test"]:
         failures.append("workflow Python coverage does not require every test shard")
     return failures
 
@@ -501,6 +496,7 @@ def validate(
     artifacts: Path,
     *,
     hosted_source: tuple[str, str] | None = None,
+    producers: dict[str, Producer] | None = None,
 ) -> list[str]:
     """Return every acceptance failure; an empty list means accepted."""
     registered = set(SUITES)
@@ -523,8 +519,32 @@ def validate(
         if hosted_source is not None and revision != hosted_source[0]:
             failures.append("tested revision differs from the hosted checkout")
         run_id = hosted_source[1] if hosted_source is not None else None
-        failures.extend(_preflight_failures(artifacts, legs, revision, run_id))
+        failures.extend(
+            _preflight_failures(artifacts, legs, revision, run_id, producers)
+        )
     return failures
+
+
+def _hosted_producers(
+    metadata: object, revision: str, run_id: str, attempt: int
+) -> dict[str, Producer] | None:
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("revision") != revision
+        or metadata.get("run_id") != run_id
+        or metadata.get("attempt") != attempt
+    ):
+        return None
+    artifacts = metadata.get("artifacts")
+    if not isinstance(artifacts, dict) or not all(
+        isinstance(producer, dict)
+        and set(producer) == {"attempt", "job_id", "artifact_id"}
+        and all(type(value) is int and value > 0 for value in producer.values())
+        and producer["attempt"] <= attempt
+        for producer in artifacts.values()
+    ):
+        return None
+    return cast("dict[str, Producer]", artifacts)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -535,30 +555,48 @@ def main(argv: list[str] | None = None) -> int:
     index = 0
     while index < len(arguments):
         name = arguments[index]
-        if name not in {"--workflow", "--needs-json", "--artifacts"} or (
+        if name not in REQUIRED_OPTIONS | {"--producers"} or (
             index + 1 >= len(arguments) or arguments[index + 1].startswith("--")
         ):
             sys.stderr.write("renewal-acceptance: invalid arguments\n")
             return 2
         options[name] = arguments[index + 1]
         index += 2
-    if len(options) != EXPECTED_OPTIONS:
+    hosted = os.environ.get("GITHUB_ACTIONS") == "true"
+    required = REQUIRED_OPTIONS | {"--producers"} if hosted else REQUIRED_OPTIONS
+    if options.keys() != required:
         sys.stderr.write("renewal-acceptance: missing required arguments\n")
         return 2
     try:
         needs_raw = json.loads(
             Path(options["--needs-json"]).read_text(encoding="utf-8")
         )
+        metadata = (
+            json.loads(Path(options["--producers"]).read_text(encoding="utf-8"))
+            if "--producers" in options
+            else None
+        )
     except (json.JSONDecodeError, OSError):
-        sys.stderr.write("renewal-acceptance: needs payload is malformed\n")
+        sys.stderr.write(
+            "renewal-acceptance: Actions metadata is missing or malformed\n"
+        )
         return 2
+    source = None
+    producers = None
+    if hosted:
+        source = (os.environ["GITHUB_SHA"], os.environ["GITHUB_RUN_ID"])
+        producers = _hosted_producers(
+            metadata, *source, int(os.environ["GITHUB_RUN_ATTEMPT"])
+        )
+        if producers is None:
+            sys.stderr.write("renewal-acceptance: invalid Actions producer identity\n")
+            return 2
     failures = validate(
         Path(options["--workflow"]).read_text(encoding="utf-8"),
         needs_raw if isinstance(needs_raw, dict) else {},
         Path(options["--artifacts"]),
-        hosted_source=(os.environ["GITHUB_SHA"], os.environ["GITHUB_RUN_ID"])
-        if os.environ.get("GITHUB_ACTIONS") == "true"
-        else None,
+        hosted_source=source,
+        producers=producers,
     )
     if failures:
         for failure in failures:

@@ -221,6 +221,41 @@ def test_make_dry_run_redacts_passwords_and_database_urls() -> None:
     assert all(sentinel not in output for sentinel in sentinels), output
 
 
+@pytest.mark.parametrize("target", ["db-bootstrap", "db-posture"])
+@pytest.mark.parametrize(("mode", "status"), [("", 0), ("-n", 0), ("-q", 1)])
+def test_db_container_discovery_only_runs_when_executed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target: str, mode: str, status: int
+) -> None:
+    monkeypatch.delenv("POSTGRES_CONTAINER", raising=False)
+    monkeypatch.delenv("CLINIC_CI_PYTHON", raising=False)
+    calls = tmp_path / "calls"
+    sentry = tmp_path / "sentry"
+    sentry.write_text(
+        f"""#!/bin/sh
+printf '%s|%s %s %s\\n' "$POSTGRES_CONTAINER" "$1" "$2" "$3" >> '{calls}'
+if [ "$1" = ps ]; then printf '%s\\n' discovered-db; fi
+"""
+    )
+    sentry.chmod(0o700)
+    result = _run_make(
+        (
+            *((mode,) if mode else ()),
+            target,
+            f"COMPOSE={sentry}",
+            f"DOCKER={sentry}",
+            f"UV={sentry}",
+        )
+    )
+    assert result.returncode == status, _output(result)
+    if mode:
+        assert not calls.exists()
+    else:
+        discovery, *dispatch = calls.read_text().splitlines()
+        assert discovery == "|ps -q db"
+        assert len(dispatch) == (3 if target == "db-bootstrap" else 1)
+        assert all(line.startswith("discovered-db|") for line in dispatch)
+
+
 def test_ci_normal_output_redacts_database_urls() -> None:
     # Given: unique URL sentinels and inert external commands
     sentinels = (

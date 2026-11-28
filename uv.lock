@@ -390,6 +390,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-django" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -435,6 +436,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-django" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 

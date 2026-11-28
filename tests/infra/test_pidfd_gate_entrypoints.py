@@ -106,6 +106,35 @@ def test_python_gate_refuses_before_dispatch(
     assert not artifacts.exists()
 
 
+def test_checked_quality_refuses_an_inherited_pidfdless_python(tmp_path: Path) -> None:
+    incapable = tmp_path / "python"
+    incapable.write_text(
+        f"#!{sys.executable}\nimport os\ndel os.pidfd_open\n"
+        "assert not hasattr(os, 'pidfd_open')\n"
+    )
+    incapable.chmod(0o700)
+    make = tmp_path / "make"
+    make.write_text("#!/bin/sh\n: > db-dispatched\n")
+    make.chmod(0o700)
+    status, _, stderr = asyncio.run(
+        _run(
+            sys.executable,
+            "-m",
+            "ops.testing.ci_local",
+            "quality",
+            "--make",
+            str(make),
+            "--workers",
+            "1",
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": str(ROOT), "UV_PYTHON": str(incapable)},
+        )
+    )
+    assert status == 1
+    assert "UV_PYTHON does not name the checked interpreter" in stderr
+    assert not (tmp_path / "db-dispatched").exists()
+
+
 @pytest.mark.parametrize(
     ("flags", "gnumakeflags"),
     [
@@ -202,7 +231,7 @@ MAKE_EXEMPTIONS = {
     "provision-staff": ("manage.py provision_staff", "clinic administration"),
     "set-clinic-timezone": ("manage.py set_clinic_timezone", "clinic administration"),
     "revoke-staff-role": ("manage.py revoke_staff_role", "clinic administration"),
-    "db-inputs": ("POSTGRES_DB", "database input validation"),
+    "db-inputs": ("$(db_inputs)", "database input validation"),
     "db-bootstrap": ("ops/db/bootstrap.sql", "database lifecycle"),
     "db-posture": ("ops/db/posture.py", "database lifecycle"),
     "migrate": ("manage.py migrate", "database lifecycle"),

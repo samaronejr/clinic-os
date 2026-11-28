@@ -33,14 +33,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def test_clinical_inbox_is_registered_and_sharded_on_each_engine() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    entries, failures = renewal_acceptance._shard_entries(workflow)
+    failures, legs = renewal_acceptance._binding_failures(
+        workflow, set(renewal_runner.SUITES)
+    )
     assert not failures
     assert renewal_runner.SUITES["clinical-inbox"] == (
         "tests/renewal/browser/test_clinical_inbox.py",
     )
-    assert [
-        entry for entry in entries if entry.partition("@")[0] == "clinical-inbox"
-    ] == ["clinical-inbox", "clinical-inbox@firefox", "clinical-inbox@webkit"]
+    assert {engine for suite, engine in legs if suite == "clinical-inbox"} == {
+        "chromium",
+        "firefox",
+        "webkit",
+    }
 
 
 def test_ci_browser_contract_dispatches_image_and_renewal_suites(

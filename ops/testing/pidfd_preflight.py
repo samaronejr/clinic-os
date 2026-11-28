@@ -17,6 +17,7 @@ CAPABILITIES: Final = (
     "signal.pidfd_send_signal",
 )
 RECORD_NAME: Final = "pidfd-preflight.json"
+RECORD_SCHEMA: Final = 2
 
 
 class PidfdUnavailableError(RuntimeError):
@@ -81,12 +82,14 @@ def write_hosted_record(
     with (directory / RECORD_NAME).open("x", encoding="utf-8") as stream:
         json.dump(
             {
-                "schema_version": 1,
+                "schema_version": RECORD_SCHEMA,
                 "result": "PASS",
                 "job": os.environ["GITHUB_JOB"],
                 "slot": slot,
                 "revision_sha": os.environ["GITHUB_SHA"],
                 "run_id": os.environ["GITHUB_RUN_ID"],
+                "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                "artifact": os.environ["CLINIC_CI_ARTIFACT"],
                 "interpreter": str(executable),
                 "version": sys.version.split()[0],
                 "build_sha256": build_hash,

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from ops.testing import ci_hosted_gate
+from ops.testing.ci_pidfd_producers import Producer, select_producers
 from ops.testing.ci_pytest_partition import SHARDS
 from ops.testing.pidfd_preflight import CAPABILITIES, RECORD_NAME
 from ops.testing.renewal_acceptance import (
@@ -81,12 +82,18 @@ def _write_preflight(
     _ = (directory / RECORD_NAME).write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "result": "PASS",
                 "job": job,
                 "slot": slot,
                 "revision_sha": revision,
                 "run_id": "1234",
+                "run_attempt": 1,
+                "artifact": (
+                    directory.parent.name
+                    if job == "renewal-browser"
+                    else directory.name
+                ),
                 "interpreter": "/usr/bin/python",
                 "version": {"3.12": "3.12.13", "3.13": "3.13.14"}[minor],
                 "build_sha256": "a" * 64,
@@ -171,6 +178,89 @@ def test_complete_evidence_is_accepted(tmp_path: Path) -> None:
     assert validate(_workflow(), _needs(), artifacts) == []
 
 
+@pytest.mark.parametrize("mutation", ["attempt-swap", "cross-job", "wrong-sha"])
+def test_acceptance_binds_effective_actions_producer(
+    tmp_path: Path, mutation: str
+) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    target = artifacts / "shard" / FIRST_SUITE / RECORD_NAME
+    producers: dict[str, Producer] = {
+        directory.name: {"attempt": 1, "job_id": index, "artifact_id": index}
+        for index, directory in enumerate(sorted(artifacts.iterdir()), 1)
+    }
+    producers["shard"]["attempt"] = 2
+    stale = target.read_bytes()
+    for path in (artifacts / "shard").glob(f"*/{RECORD_NAME}"):
+        record = json.loads(path.read_bytes())
+        record["run_attempt"] = 2
+        path.write_text(json.dumps(record))
+    source = ("a" * 40, "1234")
+    assert (
+        validate(
+            _workflow(), _needs(), artifacts, hosted_source=source, producers=producers
+        )
+        == []
+    )
+    if mutation == "attempt-swap":
+        target.write_bytes(stale)
+    elif mutation == "cross-job":
+        target.write_bytes((artifacts / "renewal-contracts" / RECORD_NAME).read_bytes())
+    else:
+        record = json.loads(target.read_bytes())
+        record["revision_sha"] = "f" * 40
+        target.write_text(json.dumps(record))
+    assert (
+        f"pidfd preflight renewal-browser/{FIRST_SUITE}: missing or invalid PASS"
+        in validate(
+            _workflow(), _needs(), artifacts, hosted_source=source, producers=producers
+        )
+    )
+
+
+def test_producer_selector_uses_original_artifact_for_carried_jobs() -> None:
+    head = "a" * 40
+    first = {
+        "name": "first",
+        "id": 1,
+        "run_id": 1234,
+        "head_sha": head,
+        "started_at": "2026-11-28T10:00:00Z",
+        "completed_at": "2026-11-28T10:05:00Z",
+    }
+    second = {**first, "name": "second", "id": 2}
+    retried = {
+        **second,
+        "id": 4,
+        "started_at": "2026-11-28T11:00:00Z",
+        "completed_at": "2026-11-28T11:05:00Z",
+    }
+    artifact = {
+        "expired": False,
+        "created_at": "2026-11-28T10:04:00Z",
+        "workflow_run": {"id": 1234, "head_sha": head},
+    }
+    selected = select_producers(
+        {"renewal-first": "first", "renewal-second": "second"},
+        [[first, second], [{**first, "id": 3}, retried]],
+        [
+            {**artifact, "name": "renewal-first", "id": 10},
+            {**artifact, "name": "renewal-second", "id": 11},
+            {
+                **artifact,
+                "name": "renewal-second",
+                "created_at": "2026-11-28T11:04:00Z",
+                "id": 12,
+            },
+        ],
+        run_id=1234,
+        head=head,
+    )
+    assert selected == {
+        "renewal-first": {"attempt": 1, "job_id": 1, "artifact_id": 10},
+        "renewal-second": {"attempt": 2, "job_id": 4, "artifact_id": 12},
+    }
+
+
 @pytest.mark.parametrize("mutation", ["missing", "FAIL", "wrong-slot", "wrong-run"])
 def test_acceptance_requires_matching_pidfd_evidence(
     tmp_path: Path, mutation: str
@@ -206,6 +296,8 @@ def test_successful_driver_that_skips_preflight_is_not_accepted(
         "GITHUB_JOB": "actionlint",
         "GITHUB_SHA": "a" * 40,
         "GITHUB_RUN_ID": "1234",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "CLINIC_CI_ARTIFACT": "renewal-actionlint",
     }.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(sys, "argv", ["ci_hosted_gate", "actionlint", str(destination)])
@@ -304,11 +396,35 @@ def test_verdict_rejects_workflow_guard_mutations(
 @pytest.mark.parametrize(
     ("step", "diagnostic"),
     [
-        ("      - if: failure()\n        run: pytest\n", "unsupported step syntax"),
+        ("      - if: failure()\n        run: pytest\n", "step can run after failure"),
         (
             "      - name: Work\n        run: pytest\n"
             "        if: >-\n          failure()\n",
-            "unsupported step condition",
+            "step can run after failure",
+        ),
+        ('      - run: pytest\n        "if": always()\n', "step can run after failure"),
+        (
+            '      - run: pytest\n        "continue-on-error": true\n',
+            "run step ignores errors",
+        ),
+        (
+            '      - {run: pytest, "if": "${{ always() }}"}\n',
+            "step can run after failure",
+        ),
+        (
+            '      - {run: pytest, "continue-on-error": true}\n',
+            "run step ignores errors",
+        ),
+        (
+            "      - name: &after failure()\n        run: echo setup\n"
+            "      - {run: pytest, if: *after}\n",
+            "step can run after failure",
+        ),
+        (
+            "      - uses: actions/upload-artifact@fixture\n"
+            "        continue-on-error: &ignore true\n"
+            "      - {run: pytest, continue-on-error: *ignore}\n",
+            "run step ignores errors",
         ),
     ],
 )

@@ -17,10 +17,8 @@ APP_DATABASE_URL ?= postgresql://clinic_app:clinic_app_password@localhost:$(POST
 MIGRATION_DATABASE_URL ?= postgresql://clinic_owner:clinic_owner_password@localhost:$(POSTGRES_HOST_PORT)/clinic
 TEST_SUPERUSER_DATABASE_URL ?= postgresql://clinic_super:clinic_super_password@localhost:$(POSTGRES_HOST_PORT)/clinic
 
-ifeq ($(origin POSTGRES_CONTAINER), undefined)
-db-bootstrap db-posture: export POSTGRES_CONTAINER = $(eval POSTGRES_CONTAINER := $$(shell $$(COMPOSE) ps -q db 2>/dev/null))$(POSTGRES_CONTAINER)
-else
-override POSTGRES_CONTAINER := $(value POSTGRES_CONTAINER)
+ifneq ($(origin POSTGRES_CONTAINER), undefined)
+override export POSTGRES_CONTAINER := $(value POSTGRES_CONTAINER)
 endif
 
 override POSTGRES_PORT := $(value POSTGRES_PORT)
@@ -45,7 +43,7 @@ else
 override TEST_DATABASE_NAME := $(value TEST_DATABASE_NAME)
 endif
 
-export POSTGRES_CONTAINER POSTGRES_PORT POSTGRES_DB TEST_DATABASE_NAME
+export POSTGRES_PORT POSTGRES_DB TEST_DATABASE_NAME
 export POSTGRES_HOST_IP POSTGRES_HOST_PORT POSTGRES_IMAGE POSTGRES_DATA_VOLUME
 export POSTGRES_USER POSTGRES_PASSWORD
 export CLINIC_OWNER_PASSWORD CLINIC_APP_PASSWORD CLINIC_SUPER_PASSWORD
@@ -65,8 +63,8 @@ isolated-db-status:
 isolated-db-down:
 	@./ops/testing/isolated_db.sh down
 
-db-inputs:
-	@set -- \
+define db_inputs
+	set -- \
 		POSTGRES_DB "$${POSTGRES_DB}" \
 		TEST_DATABASE_NAME "$${TEST_DATABASE_NAME}" \
 		POSTGRES_USER "$${POSTGRES_USER}"; \
@@ -95,6 +93,9 @@ db-inputs:
 			printf 'invalid %s\n' "$${input_name}" >&2; exit 2; \
 		}; \
 	done; \
+	if [ -z "$${POSTGRES_CONTAINER+x}" ]; then \
+		POSTGRES_CONTAINER=$$($(COMPOSE) ps -q db 2>/dev/null) || exit 2; \
+	fi; \
 	case "$${POSTGRES_CONTAINER}" in \
 		""|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) \
 			printf '%s\n' 'invalid POSTGRES_CONTAINER' >&2; exit 2;; \
@@ -109,18 +110,25 @@ db-inputs:
 		&& [ "$${POSTGRES_PORT}" -ge 1 ] \
 		&& [ "$${POSTGRES_PORT}" -le 65535 ] || { \
 			printf '%s\n' 'invalid POSTGRES_PORT' >&2; exit 2; \
-		}
+		}; \
+	export POSTGRES_CONTAINER
+endef
 
-db-bootstrap: db-inputs
-	@PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i -e PGPASSWORD \
+db-inputs:
+	@$(db_inputs)
+
+db-bootstrap:
+	@$(db_inputs); \
+	set -e; \
+	PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i -e PGPASSWORD \
 		-e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
 		-e CLINIC_SUPER_PASSWORD -e CLINIC_AGENT_PASSWORD \
 		"$${POSTGRES_CONTAINER}" \
 		psql -v ON_ERROR_STOP=1 -h localhost -p "$${POSTGRES_PORT}" \
 		-U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" \
 		-v database_name="$${POSTGRES_DB}" -v app_schema="clinic_app" \
-		-f - < ops/db/bootstrap.sql
-	@PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i \
+		-f - < ops/db/bootstrap.sql; \
+	PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i \
 		-e PGPASSWORD -e POSTGRES_PORT -e POSTGRES_USER -e POSTGRES_DB \
 		-e TEST_DATABASE_NAME "$${POSTGRES_CONTAINER}" \
 		sh -ceu '\
@@ -133,8 +141,8 @@ db-bootstrap: db-inputs
 				| grep -qx 1; then \
 				createdb -h localhost -p "$$POSTGRES_PORT" -U "$$POSTGRES_USER" \
 					--owner=clinic_owner "$$TEST_DATABASE_NAME"; \
-			fi'
-	@PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i -e PGPASSWORD \
+			fi'; \
+	PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i -e PGPASSWORD \
 		-e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
 		-e CLINIC_SUPER_PASSWORD -e CLINIC_AGENT_PASSWORD \
 		"$${POSTGRES_CONTAINER}" \
@@ -143,11 +151,19 @@ db-bootstrap: db-inputs
 		-v database_name="$${TEST_DATABASE_NAME}" -v app_schema="clinic_app" \
 		-f - < ops/db/bootstrap.sql
 
-db-posture: db-inputs
-	@$(UV) run python ops/db/posture.py
+db-posture:
+	@$(db_inputs); \
+	if [ -n "$${CLINIC_CI_PYTHON:-}" ]; then \
+		exec "$${CLINIC_CI_PYTHON}" ops/db/posture.py; \
+	fi; \
+	exec $(UV) run python ops/db/posture.py
 
 migrate:
-	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run python manage.py migrate
+	@export APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}"; \
+	if [ -n "$${CLINIC_CI_PYTHON:-}" ]; then \
+		exec "$${CLINIC_CI_PYTHON}" manage.py migrate; \
+	fi; \
+	exec $(UV) run python manage.py migrate
 
 bootstrap-clinic:
 	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run --frozen --no-sync --no-env-file python manage.py bootstrap_clinic \
