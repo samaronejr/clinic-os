@@ -1,7 +1,17 @@
 """The strace audit proves every mutation private or fails it."""
 
+import os
+import re
+
 import pytest
-from ops.testing.migration_upgrade_strace_audit import AuditReport, audit_lines
+from ops.testing import migration_upgrade_custody as custody
+from ops.testing import migration_upgrade_strace_audit as audit_module
+from ops.testing.migration_upgrade_strace_audit import (
+    SEALED_TREES,
+    AuditReport,
+    _Audit,
+    audit_lines,
+)
 
 NAME = "migration-upgrade-secrets." + "a" * 32
 RUN = f"/dev/shm/{NAME}"  # noqa: S108 - the private run mount inside the sandbox
@@ -195,3 +205,167 @@ def test_a_file_named_like_the_old_seal_is_a_foreign_write() -> None:
     )
 
     assert not report.clean
+
+
+SEAL_NONCE = "c" * 32
+SEALED = f"/dev/shm/migration-upgrade-sealed.{SEAL_NONCE}"  # noqa: S108 - private mount
+OTHER = "/dev/shm/migration-upgrade-sealed." + "d" * 32  # noqa: S108
+IDENTITY = f"{os.makedev(0, 0x2E)}:77:1000"
+STAT_ROOT = (
+    f'1 newfstatat(AT_FDCWD<{RUN}>, "{SEALED}", {{st_dev=makedev(0, 0x2e), '
+    f"st_ino=77, st_mode=S_IFDIR|0700, st_nlink=4, st_uid=1000}}, "
+    "AT_SYMLINK_NOFOLLOW) = 0"
+)
+USE_SEALED = (
+    '1 execve("/usr/bin/python3", ["python3", "-B", "-I", '
+    f'"{SEALED}/ops/testing/migration_upgrade_custody.py"], 0x0 /* 3 vars */) = 0'
+)
+
+
+def _creating(path: str) -> str:
+    return (
+        f'1 openat(AT_FDCWD<{RUN}>, "{path}", O_WRONLY|O_CREAT|O_EXCL, 0400) '
+        f"= 9<{path}>"
+    )
+
+
+SEALING = (
+    f'1 mkdir("{SEALED}", 0700) = 0',
+    f'1 mkdir("{SEALED}/ops", 0700) = 0',
+    f'1 mkdir("{SEALED}/ops/testing", 0700) = 0',
+    _creating(f"{SEALED}/ops/testing/migration_upgrade_custody.py"),
+    f'1 mkdir("{SEALED}/ops/db", 0700) = 0',
+    _creating(f"{SEALED}/ops/db/bootstrap.sql"),
+)
+CLEANUP = (
+    f'1 unlink("{SEALED}/ops/db/bootstrap.sql") = 0',
+    f'1 rmdir("{SEALED}/ops/db") = 0',
+    f'1 rmdir("{SEALED}") = 0',
+)
+
+
+def _sealed_audit(
+    *lines: str, nonce: str | None = SEAL_NONCE, identity: str | None = IDENTITY
+) -> AuditReport:
+    return audit_lines([*SETUP, *lines], PUBLIC, nonce, identity)
+
+
+def test_the_sealed_trees_are_the_custodys_planned_trees() -> None:
+    assert SEALED_TREES == custody.HELPER_TREES
+
+
+def test_the_supervisors_own_sealed_root_is_clean_from_creation_to_removal() -> None:
+    report = _sealed_audit(*SEALING, USE_SEALED, STAT_ROOT, *CLEANUP)
+
+    assert report.failures == []
+    assert report.clean
+    assert report.counts["sealed_identity"] == 1
+
+
+# Each of these is foreign: a root this run did not make, one made another way,
+# or a write the sealing never plans. The blanket allowance accepts the first
+# group (see the mutation below); the exact binding refuses all of them.
+PATH_BASED = {
+    "another_nonce": (f'1 mkdir("{OTHER}", 0700) = 0',),
+    "another_nonce_write": (_creating(f"{OTHER}/ops/testing/x.py"),),
+    "pre_created": (
+        f'1 mkdir("{SEALED}", 0700) = -1 EEXIST (File exists)',
+        f'1 mkdir("{SEALED}/ops", 0700) = 0',
+        _creating(f"{SEALED}/ops/testing/x.py"),
+    ),
+    "symlinked_root": (
+        f'1 symlink("/home/reviewer/foreign", "{SEALED}") = 0',
+        _creating(f"{SEALED}/ops/testing/x.py"),
+    ),
+    "renamed_root": (
+        *SEALING,
+        f'1 rename("{SEALED}", "{OTHER}") = 0',
+    ),
+    "write_beside_the_trees": (
+        *SEALING,
+        _creating(f"{SEALED}/evil.py"),
+    ),
+    "write_in_an_unplanned_tree": (
+        *SEALING,
+        f'1 mkdir("{SEALED}/ops/other", 0700) = 0',
+        _creating(f"{SEALED}/ops/other/x.py"),
+    ),
+    "write_after_sealing": (
+        *SEALING,
+        USE_SEALED,
+        _creating(f"{SEALED}/ops/testing/late.py"),
+    ),
+    "create_directory_after_sealing": (
+        *SEALING,
+        USE_SEALED,
+        f'1 mkdir("{SEALED}/ops/testing/late", 0700) = 0',
+    ),
+    "link_after_sealing": (
+        *SEALING,
+        USE_SEALED,
+        f'1 symlink("/home/reviewer/foreign", "{SEALED}/ops/testing/l") = 0',
+    ),
+}
+
+
+@pytest.mark.parametrize("case", PATH_BASED)
+def test_a_look_alike_of_the_sealed_root_is_flagged(case: str) -> None:
+    report = _sealed_audit(*PATH_BASED[case])
+
+    assert report.failures, case
+    assert not report.clean
+
+
+def test_a_sealed_root_with_no_recorded_nonce_is_never_allowed() -> None:
+    report = _sealed_audit(*SEALING, nonce=None)
+
+    assert report.failures
+    assert not report.clean
+
+
+def test_a_sealed_root_whose_identity_differs_from_the_record_is_flagged() -> None:
+    swapped = STAT_ROOT.replace("st_ino=77", "st_ino=78")
+
+    report = _sealed_audit(*SEALING, USE_SEALED, swapped)
+
+    assert any("identity differs" in failure for failure in report.failures)
+
+
+def test_a_sealed_root_whose_identity_was_never_observed_is_flagged() -> None:
+    report = _sealed_audit(*SEALING, USE_SEALED)
+
+    assert any("never observed" in failure for failure in report.failures)
+
+
+def test_the_old_blanket_allowance_would_let_the_look_alikes_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutation: allow any sealed-looking path, as the first repair did.
+
+    Every case below is refused by the exact binding (the test above) and clean
+    under the blanket rule, so the refusal tests fail against it.
+    """
+
+    class Blanket(_Audit):
+        def _sealed(self, target: str, kind: str) -> str | None:
+            blanket = r"/dev/shm/migration-upgrade-sealed\.[0-9a-f]{32}(/.*)?"  # noqa: S108
+            return "sealed_helper" if re.fullmatch(blanket, target) else None
+
+    monkeypatch.setattr(audit_module, "_Audit", Blanket)
+    blind = [
+        "another_nonce",
+        "another_nonce_write",
+        "pre_created",
+        "symlinked_root",
+        "renamed_root",
+        "write_beside_the_trees",
+        "write_in_an_unplanned_tree",
+        "write_after_sealing",
+        "create_directory_after_sealing",
+        "link_after_sealing",
+    ]
+
+    for case in blind:
+        report = _sealed_audit(*PATH_BASED[case])
+
+        assert report.failures == [], case

@@ -17,6 +17,7 @@ Anything that cannot be resolved or proven is a failure, never private.
 import argparse
 import ast
 import collections
+import os
 import posixpath
 import re
 import sys
@@ -25,6 +26,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 RUN_NAME = re.compile(r"migration-upgrade-secrets\.[0-9a-f]{32}")
+NONCE = re.compile(r"[0-9a-f]{32}")
+IDENTITY = re.compile(r"\d+:\d+:\d+")
+SEALED_PREFIX = "/dev/shm/migration-upgrade-sealed."  # noqa: S108 - the private mount
+# The planned helper trees of the sealed copy (custody.HELPER_TREES, pinned by a test).
+SEALED_TREES = ("ops/testing", "ops/db")
+STATS = ("stat", "lstat", "newfstatat", "fstatat64")
+STAT_FIELDS = re.compile(r"st_dev=makedev\((\w+), (\w+)\), st_ino=(\d+).*?st_uid=(\d+)")
+REMOVALS = ("unlink", "unlinkat", "rmdir")
 PENDING = re.compile(r"^\.verdict-[0-9a-f]+(?:-\d+)?\.pending$")
 NAMESPACE = re.compile(r"^/proc/(?:\d+|self)/(?:uid_map|gid_map|setgroups)$")
 WRITE = re.compile(r"\bO_(?:WRONLY|RDWR|CREAT|TRUNC|APPEND|TMPFILE)\b")
@@ -122,8 +131,18 @@ class AuditReport:
 
 
 class _Audit:
-    def __init__(self, public_dir: str) -> None:
+    def __init__(
+        self, public_dir: str, nonce: str | None = None, identity: str | None = None
+    ) -> None:
         self.public_dir = public_dir
+        # The one sealed root this run's supervisor may create: its nonce, made by
+        # a mkdir the trace saw succeed, written only while it is being sealed.
+        self.sealed = (
+            f"{SEALED_PREFIX}{nonce}" if nonce and NONCE.fullmatch(nonce) else None
+        )
+        self.identity = identity if identity and IDENTITY.fullmatch(identity) else None
+        self.sealed_made = False
+        self.sealing = True
         self.report = AuditReport()
         self.cwd: dict[str, str] = {}
         self.descriptors: dict[tuple[str, str], str] = {}
@@ -208,9 +227,34 @@ class _Audit:
         proven = holder == self.report.owned or holder in self.real_dirs
         return "private" if proven else "unproven"
 
-    def _classify(self, target: str | None, *, follow: bool) -> str:
+    def _sealed(self, target: str, kind: str) -> str | None:
+        """Judge a path at or under this run's sealed root; None for any other path."""
+        root = self.sealed
+        if root is None or not (target == root or target.startswith(f"{root}/")):
+            return None
+        if not self.sealed_made:
+            self.sealed_made = kind in ("mkdir", "mkdirat") and target == root
+            return "sealed_root" if self.sealed_made else "outside"
+        if not self.sealing:
+            return "sealed_cleanup" if kind in REMOVALS else "outside"
+        planned = self._planned(target[len(root) + 1 :], kind)
+        return "sealed_helper" if planned else "outside"
+
+    @staticmethod
+    def _planned(relative: str, kind: str) -> bool:
+        """Whether creating or writing ``relative`` is part of sealing the helpers."""
+        parts = relative.split("/")
+        inside = "/".join(parts[:2]) in SEALED_TREES
+        made = kind in ("mkdir", "mkdirat") and (parts == ["ops"] or inside)
+        wrote = kind == "write_open" and inside and len(parts) > 2  # noqa: PLR2004
+        return made or wrote
+
+    def _classify(self, target: str | None, *, follow: bool, kind: str) -> str:
         if target is None:
             return "unresolved"
+        sealed = self._sealed(target, kind)
+        if sealed:
+            return sealed
         special = self._special(target)
         if special:
             return special
@@ -223,6 +267,11 @@ class _Audit:
         self._learn(call)
         if call.name == "execve":
             self.report.executables.append(call.arguments[:300])
+            # The supervisor starts running the sealed copy: sealing is over.
+            if self.sealed and f"{self.sealed}/" in call.arguments:
+                self.sealing = False
+        if call.name in STATS and call.status == 0:
+            self._identity(call)
         if call.status < 0:
             blocked = call.name in NAME_CALLS or call.name in FOLLOWING_CALLS
             blocked = blocked or (
@@ -239,6 +288,22 @@ class _Audit:
             for indexes in table.get(call.name, ()):
                 self._mutation(call, indexes, follow=follow)
 
+    def _identity(self, call: Call) -> None:
+        """Compare every traced stat of the sealed root with the recorded identity."""
+        if not (self.sealed and self.identity and f'"{self.sealed}"' in call.arguments):
+            return
+        found = STAT_FIELDS.search(call.text)
+        if found is None:
+            return
+        device = os.makedev(int(found[1], 0), int(found[2], 0))
+        seen = f"{device}:{found[3]}:{found[4]}"
+        if seen != self.identity:
+            self.report.failures.append(
+                f"sealed root identity differs: {seen} != {self.identity}"
+            )
+        else:
+            self.report.counts["sealed_identity"] += 1
+
     def _opened(self, call: Call, resolved: str) -> None:
         parts = _split(call.arguments)
         requested = _quoted(parts[1]) if len(parts) > 1 else None
@@ -247,7 +312,7 @@ class _Audit:
         if self._under_run(resolved):
             self.known.add(resolved)
         if WRITE.search(call.arguments):
-            verdict = self._classify(resolved, follow=False)
+            verdict = self._classify(resolved, follow=False, kind="write_open")
             self._record(verdict, "write_open", resolved, call)
 
     def _learn(self, call: Call) -> None:
@@ -303,7 +368,7 @@ class _Audit:
         # judged by what it reaches, never as a plain name in the run. mkdir
         # with one (git does) creates a directory and cannot pass through a link.
         slash = relative.endswith("/") and call.name == "rmdir"
-        verdict = self._classify(target, follow=follow or slash)
+        verdict = self._classify(target, follow=follow or slash, kind=call.name)
         self._record(verdict, call.name, target, call)
         if target and verdict == "private":
             self.known.add(target)
@@ -313,9 +378,19 @@ class _Audit:
                 self.links.add(target)
 
 
-def audit_lines(trace: Iterable[str], public_dir: str) -> AuditReport:
-    """Audit an strace log and report every mutation that could not be proven."""
-    audit = _Audit(public_dir)
+def audit_lines(
+    trace: Iterable[str],
+    public_dir: str,
+    nonce: str | None = None,
+    identity: str | None = None,
+) -> AuditReport:
+    """Audit an strace log and report every mutation that could not be proven.
+
+    ``nonce`` and ``identity`` (``device:inode:owner``) are the supervisor's own
+    record of the sealed helper root it created; without them any write under a
+    sealed-root name is foreign.
+    """
+    audit = _Audit(public_dir, nonce, identity)
     for pid, text in _entries(trace):
         match = CALL.match(text)
         if match:
@@ -323,6 +398,8 @@ def audit_lines(trace: Iterable[str], public_dir: str) -> AuditReport:
     report = audit.report
     if not report.owned:
         report.failures.append("no private run directory was created in the trace")
+    if audit.identity and audit.sealed_made and not report.counts["sealed_identity"]:
+        report.failures.append("the sealed root's identity was never observed")
     for text in report.executables:
         if re.match(r'"[^"]*/tar"', text):
             report.failures.append(f"tar was executed: {text}")
@@ -336,12 +413,19 @@ def main(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("traces", nargs="+", type=Path)
     parser.add_argument("--require-blocked", action="store_true")
+    parser.add_argument("--nonce", help="the run nonce naming the sealed helper root")
+    parser.add_argument("--sealed-identity", help="device:inode:owner at creation")
     options = parser.parse_args(arguments)
     status = 0
     for trace in options.traces:
         resolved = trace.resolve()
         with resolved.open(encoding="utf-8") as lines:
-            report = audit_lines(lines, str(resolved.parent / "migration-upgrade"))
+            report = audit_lines(
+                lines,
+                str(resolved.parent / "migration-upgrade"),
+                options.nonce,
+                options.sealed_identity,
+            )
         sys.stdout.write(f"{resolved} {report.owned} {dict(report.counts)}\n")
         for failure in report.failures[:25]:
             sys.stdout.write(f"{failure}\n")

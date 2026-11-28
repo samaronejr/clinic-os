@@ -20,6 +20,7 @@ DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 HELPER_TREES = ("ops/testing", "ops/db")
+SEALED_PREFIX = "migration-upgrade-sealed."
 RECORD_SEPARATOR = "\x1e"
 
 
@@ -542,7 +543,7 @@ def _tree_entries(data: bytes) -> list[tuple[str, str, str]]:
 
 
 def _write_tree(project: str, oid: str, destination: Path) -> None:
-    destination.mkdir(mode=PRIVATE_MODE, parents=True)
+    destination.mkdir(mode=PRIVATE_MODE)
     for mode, name, child in _tree_entries(_git_object(project, "tree", oid)):
         _require_child_name(name)
         if mode == "40000":
@@ -559,11 +560,13 @@ def _write_tree(project: str, oid: str, destination: Path) -> None:
             raise RuntimeError(message)
 
 
-def seal_helpers(project: str, commit: str, target: str) -> None:
+def seal_helpers(project: str, commit: str, target: str) -> str:
     """Extract the harness helpers of ``commit`` into a fresh directory.
 
     Every object on the way from the commit to each file is checked against its
     own name, so the copy is the committed bytes whatever the checkout now holds.
+    Returns the root's identity as ``device:inode:owner``, taken at creation; the
+    supervisor holds it and every later use of the root is checked against it.
     """
     commit_data = _git_object(project, "commit", commit)
     first = commit_data.split(b"\n", 1)[0]
@@ -572,6 +575,7 @@ def seal_helpers(project: str, commit: str, target: str) -> None:
         raise RuntimeError(message)
     top = first[5:].decode()
     Path(target).mkdir(mode=PRIVATE_MODE)
+    created = os.lstat(target)
     for relative in HELPER_TREES:
         oid = top
         for part in PurePosixPath(relative).parts:
@@ -586,7 +590,9 @@ def seal_helpers(project: str, commit: str, target: str) -> None:
                 message = f"helper_seal_missing: {relative}"
                 raise RuntimeError(message)
             oid = found[0]
+        (Path(target) / relative).parent.mkdir(mode=PRIVATE_MODE, exist_ok=True)
         _write_tree(project, oid, Path(target) / relative)
+    return f"{created.st_dev}:{created.st_ino}:{created.st_uid}"
 
 
 def _file_sha256(path: Path) -> str | None:
@@ -605,16 +611,55 @@ def _file_sha256(path: Path) -> str | None:
         os.close(held)
 
 
-def verify_helpers(project: str, sealed: str) -> None:
-    """Refuse a checkout whose tracked helper differs from the sealed copy."""
-    for tree in HELPER_TREES:
-        for found in sorted((Path(sealed) / tree).rglob("*")):
-            if found.is_dir() or "__pycache__" in found.parts:
-                continue
-            relative = found.relative_to(sealed)
-            if _file_sha256(Path(project) / relative) != _file_sha256(found):
-                message = f"helpers_changed: {relative}"
+def _sealed_layout(sealed: Path) -> set[Path]:
+    """Return every file of the sealed root; refuse links and anything unplanned."""
+    planned = {PurePosixPath(tree).parts for tree in HELPER_TREES}
+    allowed = {parts[:depth] for parts in planned for depth in range(1, len(parts) + 1)}
+    files = set()
+    for directory, names, leaves in os.walk(sealed, followlinks=False):
+        here = Path(directory).relative_to(sealed).parts
+        if "__pycache__" in here:
+            continue
+        inside_tree = any(here[: len(parts)] == parts for parts in planned)
+        for name in [*names, *leaves]:
+            entry = Path(directory) / name
+            kind = os.lstat(entry).st_mode
+            planned_name = (*here, name) in allowed or inside_tree
+            if name != "__pycache__" and (
+                not planned_name or not (stat.S_ISREG(kind) or stat.S_ISDIR(kind))
+            ):
+                message = f"helpers_foreign_entry: {entry.relative_to(sealed)}"
                 raise RuntimeError(message)
+            if stat.S_ISREG(kind):
+                files.add(entry)
+    return files
+
+
+def verify_helpers(project: str, sealed: str, identity: str, nonce: str) -> None:
+    """Refuse a sealed root that is not the one created, or a changed checkout.
+
+    The root must carry this run's nonce, be the directory made at creation
+    (device, inode and owner as recorded), be owned by us, and hold nothing but
+    the planned helper files; each must still match the checkout's tracked copy.
+    """
+    root = Path(sealed)
+    if root.name != f"{SEALED_PREFIX}{nonce}":
+        message = f"helpers_root_unbound: {root.name}"
+        raise RuntimeError(message)
+    found = os.lstat(root)
+    held = f"{found.st_dev}:{found.st_ino}:{found.st_uid}"
+    if (
+        not stat.S_ISDIR(found.st_mode)
+        or held != identity
+        or found.st_uid != os.getuid()
+    ):
+        message = f"helpers_root_replaced: {held}"
+        raise RuntimeError(message)
+    for entry in sorted(_sealed_layout(root)):
+        relative = entry.relative_to(root)
+        if _file_sha256(Path(project) / relative) != _file_sha256(entry):
+            message = f"helpers_changed: {relative}"
+            raise RuntimeError(message)
 
 
 def publish_verdict(arguments: list[str], held: str) -> None:
@@ -751,11 +796,11 @@ def _publish_command(arguments: list[str]) -> None:
 
 
 def _seal_helpers_command(arguments: list[str]) -> None:
-    seal_helpers(arguments[1], arguments[2], arguments[3])
+    sys.stdout.write(seal_helpers(arguments[1], arguments[2], arguments[3]))
 
 
 def _verify_helpers_command(arguments: list[str]) -> None:
-    verify_helpers(arguments[1], arguments[2])
+    verify_helpers(arguments[1], arguments[2], arguments[3], arguments[4])
 
 
 TOOLS = {
