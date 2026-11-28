@@ -4,6 +4,7 @@ import io
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -525,29 +526,43 @@ def _committed(tmp_path: Path) -> tuple[Path, str]:
     return repo, head.stdout.strip()
 
 
+SEAL_NONCE = "e" * 32
+
+
+def _seal(tmp_path: Path) -> tuple[Path, Path, str, str]:
+    """Commit helpers, seal them, and return the repo, sealed root, identity, commit."""
+    repo, commit = _committed(tmp_path)
+    sealed = tmp_path / f"migration-upgrade-sealed.{SEAL_NONCE}"
+    identity = custody.seal_helpers(str(repo), commit, str(sealed))
+    return repo, sealed, identity, commit
+
+
+def _verify(repo: Path, sealed: Path, identity: str, nonce: str = SEAL_NONCE) -> None:
+    custody.verify_helpers(str(repo), str(sealed), identity, nonce)
+
+
 def test_sealed_helpers_are_the_committed_bytes_whatever_the_checkout_holds(
     tmp_path: Path,
 ) -> None:
     repo, commit = _committed(tmp_path)
     helper = repo / "ops/testing/helper.py"
     helper.write_text("print('edited')\n")
-    sealed = tmp_path / "sealed"
+    sealed = tmp_path / f"migration-upgrade-sealed.{SEAL_NONCE}"
 
-    custody.seal_helpers(str(repo), commit, str(sealed))
+    identity = custody.seal_helpers(str(repo), commit, str(sealed))
 
     assert (sealed / "ops/testing/helper.py").read_text() == "print('committed')\n"
     assert (sealed / "ops/db/bootstrap.sql").read_text() == "SELECT 1;\n"
     assert os.access(sealed / "ops/testing/run.sh", os.X_OK)
+    assert stat.S_IMODE((sealed / "ops").stat().st_mode) == 0o700
     with pytest.raises(RuntimeError, match=r"helpers_changed: ops/testing/helper\.py"):
-        custody.verify_helpers(str(repo), str(sealed))
+        _verify(repo, sealed, identity)
     helper.write_text("print('committed')\n")
-    custody.verify_helpers(str(repo), str(sealed))
+    _verify(repo, sealed, identity)
 
 
 def test_a_helper_swapped_for_a_link_after_sealing_is_refused(tmp_path: Path) -> None:
-    repo, commit = _committed(tmp_path)
-    sealed = tmp_path / "sealed"
-    custody.seal_helpers(str(repo), commit, str(sealed))
+    repo, sealed, identity, _ = _seal(tmp_path)
     helper = repo / "ops/testing/helper.py"
     copy = tmp_path / "identical-copy.py"
     copy.write_text("print('committed')\n")
@@ -555,7 +570,57 @@ def test_a_helper_swapped_for_a_link_after_sealing_is_refused(tmp_path: Path) ->
     helper.symlink_to(copy)
 
     with pytest.raises(RuntimeError, match=r"helpers_changed: ops/testing/helper\.py"):
-        custody.verify_helpers(str(repo), str(sealed))
+        _verify(repo, sealed, identity)
+
+
+def test_a_sealed_root_replaced_by_an_identical_copy_is_refused(tmp_path: Path) -> None:
+    repo, sealed, identity, _ = _seal(tmp_path)
+    moved = tmp_path / "moved"
+    sealed.rename(moved)
+    shutil.copytree(moved, sealed)
+
+    with pytest.raises(RuntimeError, match="helpers_root_replaced"):
+        _verify(repo, sealed, identity)
+
+
+def test_a_sealed_root_replaced_by_a_link_is_refused(tmp_path: Path) -> None:
+    repo, sealed, identity, _ = _seal(tmp_path)
+    moved = tmp_path / "moved"
+    sealed.rename(moved)
+    sealed.symlink_to(moved)
+
+    with pytest.raises(RuntimeError, match="helpers_root_replaced"):
+        _verify(repo, sealed, identity)
+
+
+def test_a_sealed_root_under_another_nonce_is_refused(tmp_path: Path) -> None:
+    repo, sealed, identity, _ = _seal(tmp_path)
+
+    with pytest.raises(RuntimeError, match="helpers_root_unbound"):
+        _verify(repo, sealed, identity, nonce="f" * 32)
+
+
+@pytest.mark.parametrize(
+    "plant",
+    ["evil.py", "ops/evil.py", "ops/other/x.py", "ops/testing/extra.py"],
+)
+def test_an_entry_the_sealing_did_not_plan_is_refused(
+    tmp_path: Path, plant: str
+) -> None:
+    repo, sealed, identity, _ = _seal(tmp_path)
+    (sealed / plant).parent.mkdir(parents=True, exist_ok=True)
+    (sealed / plant).write_text("print('planted')\n")
+
+    with pytest.raises(RuntimeError, match=r"helpers_foreign_entry|helpers_changed"):
+        _verify(repo, sealed, identity)
+
+
+def test_a_link_planted_inside_the_sealed_root_is_refused(tmp_path: Path) -> None:
+    repo, sealed, identity, _ = _seal(tmp_path)
+    (sealed / "ops/testing/link.py").symlink_to(sealed / "ops/testing/helper.py")
+
+    with pytest.raises(RuntimeError, match="helpers_foreign_entry"):
+        _verify(repo, sealed, identity)
 
 
 def test_an_object_that_does_not_hash_to_its_name_is_refused(

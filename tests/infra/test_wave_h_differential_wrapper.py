@@ -16,6 +16,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "61918080021ddcfe2912e6922677143d5704d96d"
 FOUNDATION = "b39ae436590c8a9c00ad8fc93d619875d1822827"
+# The only interpreter any stand-in tool may name: the sandbox can see it, and a
+# Python found on PATH (a user install, miniconda) is outside what the run allows.
+SYSTEM_PYTHON = "/usr/bin/python3"
 
 
 @pytest.fixture
@@ -168,12 +171,14 @@ def _tools(tmp_path: Path, *, missing: str = "") -> Path:
     ):
         if name == missing:
             continue
-        source = shutil.which(name)
+        source = SYSTEM_PYTHON if name == "python3" else shutil.which(name)
         if source is None:
             # These tests stop before invoking Docker/uv.
             assert name in {"docker", "uv"}
             source = "/bin/false"
         (bin_dir / name).symlink_to(source)
+    if missing != "python3":
+        assert (bin_dir / "python3").resolve().parent == Path("/usr/bin")
     return bin_dir
 
 
@@ -1248,7 +1253,7 @@ def _rewrite_attestations(names: tuple[str, ...]) -> str:
     """Bash that rewrites run files the way anything able to write the run could."""
     listed = " ".join(repr(name) for name in names)
     return (
-        f"    python3 - \"$UPGRADE_PRIVATE_RUN_DIR\" {listed} <<'PYEOF'\n"
+        f"    {SYSTEM_PYTHON} -B -I - \"$UPGRADE_PRIVATE_RUN_DIR\" {listed} <<'PYEOF'\n"
         "import json, sys\n"
         "from pathlib import Path\n"
         "for name in sys.argv[2:]:\n"
@@ -1264,7 +1269,7 @@ def _rewrite_attestations(names: tuple[str, ...]) -> str:
 def _forge_differential(real_python: str) -> str:
     """Forge the sealed report in place and announce the hash a peer would write."""
     return (
-        f"    {real_python} - \"$UPGRADE_PRIVATE_RUN_DIR\" <<'PYEOF'\n"
+        f"    {real_python} -B -I - \"$UPGRADE_PRIVATE_RUN_DIR\" <<'PYEOF'\n"
         "import hashlib, json, sys\n"
         "from pathlib import Path\n"
         'path = Path(sys.argv[1]) / "differential.json"\n'
@@ -1277,6 +1282,14 @@ def _forge_differential(real_python: str) -> str:
         '    print("FORGED differential.json", digest, file=sys.stderr, flush=True)\n'
         "PYEOF\n"
     )
+
+
+def _assert_system_interpreters(shim: str) -> None:
+    """A stand-in tool may run the system Python and no other interpreter."""
+    stray = re.findall(r"(?<!/usr/bin/)\bpython3?\b(?![._/-])", shim)
+    assert stray == [], shim
+    for path in re.findall(r"(/\S*/python3?\S*)", shim):
+        assert path.startswith("/usr/bin/"), path
 
 
 def _peer_run(
@@ -1293,6 +1306,7 @@ def _peer_run(
     mount_dir = tmp_path / "mnt"
     mount_dir.mkdir()
     for tool, text in shims(fifo).items():
+        _assert_system_interpreters(text)
         shim = bin_dir / tool
         shim.unlink()
         shim.write_text(text, encoding="utf-8")
@@ -1375,7 +1389,7 @@ def test_a_rewrite_after_the_supervisor_read_a_file_never_reaches_the_verdict(
 
     outcome, published = _peer_run(tmp_path, shims)
 
-    assert "forged" not in published, published
+    assert "forged" not in published, f"FORGED_PUBLISHED {published}"
     assert outcome["seals"] == [], outcome["seals"]
     assert (json.loads(published)["result"] == "PASS") is passes, published[-800:]
 
@@ -1393,7 +1407,7 @@ def test_a_forged_report_with_a_rewritten_seal_is_not_published(
     """
 
     def shims(fifo: Path) -> dict[str, str]:
-        real = _tool("python3")
+        real = SYSTEM_PYTHON
         return {
             "python3": _gate(
                 real, fifo, '"$*" == *verified.json*', _forge_differential(real)
@@ -1402,10 +1416,13 @@ def test_a_forged_report_with_a_rewritten_seal_is_not_published(
 
     outcome, published = _peer_run(tmp_path, shims)
 
-    assert "FORGED differential.json" in str(outcome["output"])
-    assert "515151" not in published, published
+    assert "FORGED differential.json" in str(outcome["output"]), (
+        f"ATTACK_DID_NOT_RUN {str(outcome['output'])[-1500:]}"
+    )
+    assert "515151" not in published, f"FORGED_PUBLISHED {published}"
     assert outcome["seals"] == [], outcome["seals"]
-    assert json.loads(published)["result"] != "PASS", published[-800:]
+    result = json.loads(published)["result"]
+    assert result != "PASS", f"FORGED_CERTIFIED {published[-800:]}"
 
 
 @requires_postgres
@@ -1432,7 +1449,7 @@ def test_an_edit_of_the_launcher_and_census_in_the_checkout_never_runs(
     outcome, published = _peer_run(tmp_path, shims, edit=edited)
     output = str(outcome["output"])
 
-    assert outcome["canary"] is False, output[-3000:]
+    assert outcome["canary"] is False, f"CANARY_RAN {output[-3000:]}"
     assert json.loads(published)["result"] != "PASS", published[-800:]
 
 
@@ -1447,12 +1464,12 @@ def test_a_python_on_the_path_never_runs_for_the_supervisor(tmp_path: Path) -> N
 
     def shims(_fifo: Path) -> dict[str, str]:
         return {
-            "python3": f'#!/bin/bash\n: > "{canary}"\nexec {_tool("python3")} "$@"\n'
+            "python3": f'#!/bin/bash\n: > "{canary}"\nexec {SYSTEM_PYTHON} -B -I "$@"\n'
         }
 
     _peer_run(tmp_path, shims, differential=False)
 
-    assert not canary.exists()
+    assert not canary.exists(), "SUPERVISOR_RAN_PATH_PYTHON"
 
 
 @requires_postgres
@@ -1510,3 +1527,26 @@ def test_the_pinned_native_verifier_never_writes_through_a_link_to_a_visible_hos
     assert outcome["returncode"] != 0, output[-3000:]
     assert outcome["target"] == "secret"
     _not_a_pass(tmp_path)
+
+
+SUPERVISOR_PYTHON_SANCTIONED = re.compile(
+    r"/usr/bin/python3|^\s*#|sandboxed|command -v python3"
+    r"|for (required|sandbox_tool) in"
+)
+
+
+def test_the_supervisor_runs_only_the_system_python() -> None:
+    """Every Python the supervisor starts itself is the absolute system one.
+
+    A bare ``python3`` would resolve through PATH, which a same-user peer or a
+    stand-in tool can point anywhere; children run under the sandbox instead.
+    """
+    script = (ROOT / "ops/testing/migration_upgrade.sh").read_text()
+    stray = [
+        line.strip()
+        for line in script.splitlines()
+        if re.search(r"\bpython3\b", line)
+        and not SUPERVISOR_PYTHON_SANCTIONED.search(line)
+    ]
+
+    assert stray == []

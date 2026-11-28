@@ -60,6 +60,7 @@ psql_super() {
 db_created=0
 sealed_tree=""
 sealed_root=""
+sealed_identity=""
 helpers=""
 held_verified=""
 held_verdict=""
@@ -194,7 +195,7 @@ capture_attestation() {
 # The harness the run executed must still be the harness that was sealed.
 verify_sealed_helpers() {
     if ! /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
-        verify-helpers "$project_root" "$sealed_root"; then
+        verify-helpers "$project_root" "$sealed_root" "$sealed_identity" "$run_nonce"; then
         setup_detail=helpers_changed
         exit 1
     fi
@@ -435,11 +436,14 @@ refuse_public_private_entries
 # Everything this process runs from here on comes from the commit, verified
 # object by object, never from the checkout; the checkout must still match it.
 sealed_root="/dev/shm/migration-upgrade-sealed.$run_nonce"
-if ! /usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
-    seal-helpers "$project_root" "$commit_sha" "$sealed_root"; then
+if ! sealed_identity="$(/usr/bin/python3 -B -I "$helpers/migration_upgrade_custody.py" \
+    seal-helpers "$project_root" "$commit_sha" "$sealed_root")"; then
     setup_detail=helpers_unsealed
     exit 1
 fi
+# The root's identity at creation (device:inode:owner), for the audit gate; every
+# later use is checked against the copy held in this variable.
+echo "migration-upgrade: sealed_identity=$sealed_identity"
 helpers="$sealed_root/ops/testing"
 verify_sealed_helpers
 readonly seed_file="$secret_dir/seed.json"
