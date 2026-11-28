@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import subprocess
+import asyncio
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -9,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 from ops.testing import (
+    ci_local,
     ci_postgres_controller,
     ci_postgres_runtime,
     renewal_acceptance,
@@ -42,59 +44,36 @@ def test_clinical_inbox_is_registered_and_sharded_on_each_engine() -> None:
 
 
 def test_ci_browser_contract_dispatches_image_and_renewal_suites(
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ = (tmp_path / "Makefile").write_bytes((PROJECT_ROOT / "Makefile").read_bytes())
-    testing = tmp_path / "ops/testing"
-    testing.mkdir(parents=True)
-    _ = (testing / "ci-required-browser-suites.txt").write_bytes(
-        (PROJECT_ROOT / "ops/testing/ci-required-browser-suites.txt").read_bytes()
-    )
-    probe = testing / "browser_runner.sh"
-    _ = probe.write_text("#!/bin/sh\nprintf 'legacy:%s\\n' \"$@\"\n", encoding="utf-8")
-    probe.chmod(0o700)
+    calls: list[tuple[str, ...]] = []
 
-    result = subprocess.run(
+    async def run(*argv: str) -> str:
+        calls.append(argv)
+        return ""
+
+    monkeypatch.chdir(PROJECT_ROOT)
+    monkeypatch.setattr(ci_local, "_run", run)
+    asyncio.run(ci_local._browser())
+    assert calls == [
         (
-            "/usr/bin/make",
-            "--silent",
-            "--no-print-directory",
-            "ci-browser-contract",
-            "POSTGRES_CONTAINER=synthetic",
-            "UV=printf 'renewal:%s\\n'",
+            "ops/testing/browser_runner.sh",
+            "probe",
+            "--require-suite",
+            "availability",
+            "--require-suite",
+            "patient",
+            "--require-suite",
+            "scheduling",
         ),
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines() == [
-        "renewal:run",
-        "renewal:--frozen",
-        "renewal:--no-sync",
-        "renewal:--no-env-file",
-        "renewal:python",
-        "renewal:-m",
-        "renewal:ops.testing.pidfd_preflight",
-        "legacy:probe",
-        "legacy:--require-suite",
-        "legacy:availability",
-        "legacy:--require-suite",
-        "legacy:patient",
-        "legacy:--require-suite",
-        "legacy:scheduling",
-        "renewal:run",
-        "renewal:--frozen",
-        "renewal:--no-sync",
-        "renewal:--no-env-file",
-        "renewal:python",
-        "renewal:-m",
-        "renewal:ops.testing.renewal_runner",
-        "renewal:browser",
-        "renewal:--suite",
-        "renewal:clinical-inbox",
+        (
+            sys.executable,
+            "-m",
+            "ops.testing.renewal_runner",
+            "browser",
+            "--suite",
+            "clinical-inbox",
+        ),
     ]
 
 

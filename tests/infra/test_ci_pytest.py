@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import contextlib
 import json
 import os
@@ -18,7 +19,7 @@ import yaml
 from coverage.config import read_coverage_config
 from coverage.core import Core
 from coverage.sysmon import SysMonitor
-from ops.testing import ci_pytest
+from ops.testing import ci_local, ci_pytest
 from ops.testing import renewal_runner as runner
 from ops.testing.ci_pytest_partition import public_nodeid
 from ops.testing.ci_pytest_plugin import (
@@ -851,9 +852,27 @@ def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
     makefile = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "CI_PYTEST_WORKERS ?= 4" in makefile.splitlines()
     recipe = makefile.split("\nci:\n", maxsplit=1)[1].split("\n\n", maxsplit=1)[0]
-    assert '-m ops.testing.ci_pytest --workers "$(CI_PYTEST_WORKERS)"' in recipe
+    assert "-m ops.testing.ci_local quality" in recipe
+    assert '--workers "$(CI_PYTEST_WORKERS)"' in recipe
     assert "run pytest" not in recipe
     assert "-m pytest" not in recipe
+    local_calls: list[tuple[str, ...]] = []
+
+    async def local_run(*argv: str, capture: bool = False) -> str:
+        local_calls.append(argv)
+        return "1" * 40 if capture else ""
+
+    monkeypatch.setattr(ci_local, "_run", local_run)
+    asyncio.run(ci_local._quality("/usr/bin/make", "4"))
+    assert (
+        sys.executable,
+        "-m",
+        "ops.testing.ci_pytest",
+        "--workers",
+        "4",
+        "--work-root",
+        str(Path.cwd() / "var/ci-pytest"),
+    ) in local_calls
     captured: list[list[str]] = []
 
     @contextlib.contextmanager

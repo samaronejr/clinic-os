@@ -1,9 +1,12 @@
-# A recipe failure cannot stop Make under -i. Reject it before gate dispatch.
-# GNU Make groups its active short flags into MFLAGS' first word.
-ifneq ($(filter ci ci-browser-contract ci-image-contracts,$(MAKECMDGOALS)),)
-ifneq ($(findstring i,$(filter-out --%,$(firstword $(MFLAGS)))),)
-$(error CI gates do not support --ignore-errors (-i))
+# Do not trust caller-overridden views of GNU Make's active modes.
+ifneq ($(filter command,$(origin MAKEFLAGS) $(origin MFLAGS)),)
+$(error CI gates do not support overriding MAKEFLAGS or MFLAGS as Make variables)
 endif
+# GNU Make puts its active short flag letters in the first word, before
+# long options and variable assignments. Check letters in that word only.
+override make_mode_letters := $(filter-out -%,$(firstword $(MAKEFLAGS))) $(patsubst -%,%,$(filter-out --%,$(firstword $(MFLAGS))))
+ifneq ($(strip $(foreach flag,i k n t q,$(findstring $(flag),$(make_mode_letters)))),)
+$(error CI gates do not support --ignore-errors (-i), --keep-going (-k), --dry-run (-n), --touch (-t), or --question (-q))
 endif
 
 COMPOSE ?= docker compose
@@ -215,23 +218,10 @@ restore-rehearsal:
 		--attachment-root "$${RESTORE_ATTACHMENT_ROOT:?}"
 
 ci-browser-contract:
-	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.pidfd_preflight
-	@actual="$$(sha256sum ops/testing/ci-required-browser-suites.txt | cut -d' ' -f1)"; \
-		test "$${actual}" = 4c6e14cdf93690d1c38bba4b5a7c36cf657bf795bc3a003a17ad5bc3e67067c5
-	@set --; previous=''; \
-		while IFS= read -r suite; do \
-			case "$${suite}" in availability|patient|scheduling) ;; *) exit 2 ;; esac; \
-			test -z "$${previous}" || test "$${previous}" \< "$${suite}" || exit 2; \
-			set -- "$${@}" --require-suite "$${suite}"; previous="$${suite}"; \
-		done < ops/testing/ci-required-browser-suites.txt; \
-		test "$${#}" -eq 6 && ops/testing/browser_runner.sh probe "$${@}"
-	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite clinical-inbox
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local browser
 
 ci-image-contracts:
-	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_image_contracts
-	@sha="$$(git rev-parse HEAD)"; \
-		ops/testing/image_smoke.sh build --sha "$${sha}"
-	@ops/testing/tls_stack.sh smoke
+	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.ci_local image
 
 current-source-snapshot:
 	@set --; \
@@ -246,19 +236,5 @@ current-source-snapshot:
 
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
-	$(UV) sync --locked --all-groups
-	$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.pidfd_preflight
-	@$(MAKE) db-bootstrap
-	@$(MAKE) migrate
-	@$(MAKE) db-posture
-	$(UV) run ruff check .
-	$(UV) run ruff format --check .
-	$(UV) run mypy .
-	@APP_DATABASE_URL="$${APP_DATABASE_URL}" \
-		MIGRATION_DATABASE_URL="$${MIGRATION_DATABASE_URL}" \
-		TEST_SUPERUSER_DATABASE_URL="$${TEST_SUPERUSER_DATABASE_URL}" \
-		$(UV) run python -m ops.testing.ci_pytest --workers "$(CI_PYTEST_WORKERS)" \
-		--work-root "$(CURDIR)/var/ci-pytest"
-	$(UV) run pip-audit --local
-	@$(MAKE) ci-image-contracts
-	@$(MAKE) ci-browser-contract
+	$(UV) run --locked --all-groups python -m ops.testing.ci_local quality \
+		--make "$(MAKE)" --workers "$(CI_PYTEST_WORKERS)"

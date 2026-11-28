@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -35,13 +36,25 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
 SHA = "1" * 40
 
 
-async def _run(*argv: str, cwd: Path, env: dict[str, str]) -> tuple[int | None, str]:
+async def _run(
+    *argv: str, cwd: Path, env: dict[str, str], stdin: str = ""
+) -> tuple[int | None, str, str]:
     process = await asyncio.create_subprocess_exec(
-        *argv, cwd=cwd, env=env, stderr=asyncio.subprocess.PIPE
+        *argv,
+        cwd=cwd,
+        env=env,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    async with asyncio.timeout(60):
-        _, stderr = await process.communicate()
-    return process.returncode, stderr.decode()
+    try:
+        async with asyncio.timeout(60):
+            stdout, stderr = await process.communicate(stdin.encode())
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        raise
+    return process.returncode, stdout.decode(), stderr.decode()
 
 
 @pytest.mark.parametrize(
@@ -49,6 +62,9 @@ async def _run(*argv: str, cwd: Path, env: dict[str, str]) -> tuple[int | None, 
     [
         ("ci_pytest", ("--partition-only",)),
         ("ci_image_contracts", ()),
+        ("ci_local", ("image",)),
+        ("ci_local", ("browser",)),
+        ("ci_local", ("quality", "--make", "/usr/bin/false", "--workers", "1")),
         ("image_smoke_controller", ("build", "--sha", SHA)),
         ("tls_stack_controller", ("smoke",)),
         ("browser_runner_controller", ("probe",)),
@@ -71,7 +87,7 @@ def test_python_gate_refuses_before_dispatch(
         )
     elif module == "renewal_runner":
         arguments += ("--artifact-root", str(artifacts))
-    status, stderr = asyncio.run(
+    status, _, stderr = asyncio.run(
         _run(
             sys.executable,
             "-c",
@@ -118,7 +134,7 @@ def test_make_cannot_dispatch_after_pidfd_refusal(
     )
     driver = tmp_path / "uv-sentry.py"
     _ = driver.write_text(RUN_UV_COMMAND, encoding="utf-8")
-    status, stderr = asyncio.run(
+    status, _, stderr = asyncio.run(
         _run(
             "/usr/bin/make",
             "--no-print-directory",
@@ -140,42 +156,156 @@ def test_make_cannot_dispatch_after_pidfd_refusal(
     assert not (tmp_path / "dispatched").exists()
 
 
+@pytest.mark.parametrize("target", ["ci-browser-contract", "ci-image-contracts"])
+@pytest.mark.parametrize(
+    ("makeflags", "mflags", "argv"),
+    [
+        ("-i -- MFLAGS=", "", ()),
+        ("-i -- MAKECMDGOALS=", "", ()),
+        ("--keep-going", "", ()),
+        ("", "", ("-n",)),
+        ("", "", ("-t",)),
+        ("", "", ("-q",)),
+        ("", "-i", ("-i", "MAKEFLAGS=")),
+        ("", "", ("-i", "MAKEFLAGS=", "MFLAGS=")),
+    ],
+)
+def test_make_rejects_unsafe_modes_before_any_dispatch(
+    tmp_path: Path, target: str, makeflags: str, mflags: str, argv: tuple[str, ...]
+) -> None:
+    _ = (tmp_path / "Makefile").write_bytes((ROOT / "Makefile").read_bytes())
+    status, _, stderr = asyncio.run(
+        _run(
+            "/usr/bin/make",
+            *argv,
+            target,
+            "POSTGRES_CONTAINER=synthetic",
+            "UV=touch uv-dispatched;",
+            cwd=tmp_path,
+            env={**os.environ, "MAKEFLAGS": makeflags, "MFLAGS": mflags},
+        )
+    )
+    assert status == 2
+    assert "CI gates do not support" in stderr
+    assert not (tmp_path / "uv-dispatched").exists()
+
+
+MAKE_EXEMPTIONS = {
+    "bootstrap-clinic": ("manage.py bootstrap_clinic", "clinic administration"),
+    "provision-staff": ("manage.py provision_staff", "clinic administration"),
+    "set-clinic-timezone": ("manage.py set_clinic_timezone", "clinic administration"),
+    "revoke-staff-role": ("manage.py revoke_staff_role", "clinic administration"),
+    "db-inputs": ("POSTGRES_DB", "database input validation"),
+    "db-bootstrap": ("ops/db/bootstrap.sql", "database lifecycle"),
+    "db-posture": ("ops/db/posture.py", "database lifecycle"),
+    "migrate": ("manage.py migrate", "database lifecycle"),
+    "isolated-db-up": ("./ops/testing/isolated_db.sh up", "database lifecycle"),
+    "isolated-db-status": ("./ops/testing/isolated_db.sh status", "database lifecycle"),
+    "isolated-db-down": ("./ops/testing/isolated_db.sh down", "database lifecycle"),
+    "restore-rehearsal": ("ops.testing.restore_rehearsal", "standalone backup restore"),
+    "current-source-snapshot": ("ops.testing.current_source_snapshot", "evidence only"),
+}
+GATE_RECIPE = re.compile(
+    r"\$\(UV\) run (?:--frozen --no-sync --no-env-file python -m "
+    r"ops\.testing\.ci_local (?:browser|image)|--locked --all-groups python -m "
+    r'ops\.testing\.ci_local quality --make "\$\(MAKE\)" '
+    r'--workers "\$\(CI_PYTEST_WORKERS\)")'
+)
+WORKLOAD = re.compile(r"\bpytest\b|\bops(?:\.testing\.|/testing/)")
+
+
+def _make_recipes(makefile: Path) -> dict[str, str]:
+    # -pRr emits GNU Make's database. Select an empty synthetic goal so no
+    # repository recipe executes and avoid the intentionally forbidden -q.
+    sentinel = "__pidfd_inventory__"
+    status, database, stderr = asyncio.run(
+        _run(
+            "/usr/bin/make",
+            "-pRr",
+            "-f",
+            str(makefile),
+            "-f",
+            "-",
+            sentinel,
+            "POSTGRES_CONTAINER=inventory",
+            cwd=makefile.parent,
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+            stdin=f"{sentinel}: ;\n",
+        )
+    )
+    assert status == 0, stderr
+    files = database.split("\n# Files\n", 1)[1].split("\n# files hash-table", 1)[0]
+    recipes = {}
+    for block in files.split("\n\n"):
+        target = re.search(r"^([^\s:#]+):", block, re.MULTILINE)
+        commands = [
+            line.strip() for line in block.splitlines() if line.startswith("\t")
+        ]
+        if target and commands and target[1] != sentinel:
+            commands = [line.removesuffix("\\").rstrip() for line in commands]
+            recipes[target[1]] = " ".join(commands)
+    return recipes
+
+
+def _assert_make_guards(makefile: Path) -> None:
+    recipes = _make_recipes(makefile)
+    assert MAKE_EXEMPTIONS.keys() <= recipes.keys(), "stale Make gate exemption"
+    for target, recipe in recipes.items():
+        if GATE_RECIPE.fullmatch(recipe):
+            continue
+        assert target in MAKE_EXEMPTIONS, f"unguarded Make target: {target}"
+        command, reason = MAKE_EXEMPTIONS[target]
+        assert command in recipe, target
+        assert not WORKLOAD.search(recipe.replace(command, "", 1)), (
+            f"unguarded workload in {target} ({reason})"
+        )
+
+
+def _assert_workflow_guards(workflow: Path) -> None:
+    source = yaml.safe_load(workflow.read_text())
+    assert "defaults" not in source
+    for name, job in source["jobs"].items():
+        assert "defaults" not in job, name
+        assert "continue-on-error" not in job, name
+        steps = job["steps"]
+        index = next(i for i, step in enumerate(steps) if "run" in step)
+        assert "isolation_ledger.py snapshot" in steps[index]["run"], name
+        # Exact keys ensure the check is not conditional, ignored, or
+        # dispatched through an alternate shell.
+        assert steps[index + 1] == {
+            "name": "Verify Python pidfd support",
+            "run": PREFLIGHT,
+        }, f"unguarded CI job: {name}"
+
+
 def test_workflow_and_make_gate_inventory_is_guarded() -> None:
-    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    jobs = workflow["jobs"]
-    assert set(jobs) == {
-        "test",
-        "python-coverage",
-        "contracts",
-        "renewal-browser",
-        "worker-integration",
-        "migration-upgrade",
-        "renewal-acceptance",
-        "actionlint",
-    }
-    for name, job in jobs.items():
-        scripts = [step["run"] for step in job["steps"] if "run" in step]
-        assert "isolation_ledger.py snapshot" in scripts[0], name
-        assert scripts[1] == PREFLIGHT, name
-    makefile = (ROOT / "Makefile").read_text()
-    for target, drivers in {
-        "ci": ("-m ops.testing.pidfd_preflight", "-m ops.testing.ci_pytest"),
-        "ci-browser-contract": (
-            "ops/testing/browser_runner.sh probe",
-            "-m ops.testing.renewal_runner browser",
-        ),
-        "ci-image-contracts": (
-            "-m ops.testing.ci_image_contracts",
-            "ops/testing/image_smoke.sh build",
-            "ops/testing/tls_stack.sh smoke",
-        ),
-    }.items():
-        recipe = makefile.split(f"\n{target}:\n", 1)[1].split("\n\n", 1)[0]
-        assert all(driver in recipe for driver in drivers), target
-    for shell, module in {
-        "browser_runner": "browser_runner_controller",
-        "image_smoke": "image_smoke_controller",
-        "tls_stack": "tls_stack_controller",
-    }.items():
-        script = (ROOT / f"ops/testing/{shell}.sh").read_text()
-        assert f'"$python_bin" -m ops.testing.{module} ' in script
+    _assert_make_guards(ROOT / "Makefile")
+    _assert_workflow_guards(ROOT / ".github/workflows/ci.yml")
+
+
+def test_inventory_rejects_new_make_test_target(tmp_path: Path) -> None:
+    makefile = tmp_path / "Makefile"
+    _ = makefile.write_text(
+        (ROOT / "Makefile").read_text()
+        + "\n.PHONY: unguarded-test\nunguarded-test:\n\tpytest -q tests\n"
+    )
+    with pytest.raises(AssertionError, match="unguarded Make target: unguarded-test"):
+        _assert_make_guards(makefile)
+
+
+@pytest.mark.parametrize("conditional", [False, True])
+def test_inventory_rejects_new_unguarded_ci_job(
+    tmp_path: Path, *, conditional: bool
+) -> None:
+    workflow = tmp_path / "ci.yml"
+    source = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    template = source["jobs"]["test"]
+    snapshot, guard = [step for step in template["steps"] if "run" in step][:2]
+    steps = [snapshot]
+    if conditional:
+        steps.append({**guard, "if": "${{ false }}"})
+    steps.append({"run": "pytest -q tests"})
+    source["jobs"]["unguarded-test"] = {"runs-on": "ubuntu-latest", "steps": steps}
+    _ = workflow.write_text(yaml.safe_dump(source))
+    with pytest.raises(AssertionError, match="unguarded CI job: unguarded-test"):
+        _assert_workflow_guards(workflow)
