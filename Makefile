@@ -1,4 +1,10 @@
-# Do not trust caller-overridden views of GNU Make's active modes.
+.DEFAULT_GOAL := isolated-db-up
+override ci_gate_goals := ci ci-browser-contract ci-image-contracts
+
+# A caller can hide the real goals by assigning MAKECMDGOALS. When
+# the scope is unknown, fail closed for unsafe or masked modes.
+override ci_mode_scope := $(if $(filter command,$(origin MAKECMDGOALS)),unknown,$(filter $(ci_gate_goals),$(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))))
+ifneq ($(ci_mode_scope),)
 ifneq ($(filter command,$(origin MAKEFLAGS) $(origin MFLAGS)),)
 $(error CI gates do not support overriding MAKEFLAGS or MFLAGS as Make variables)
 endif
@@ -7,6 +13,7 @@ endif
 override make_mode_letters := $(filter-out -%,$(firstword $(MAKEFLAGS))) $(patsubst -%,%,$(filter-out --%,$(firstword $(MFLAGS))))
 ifneq ($(strip $(foreach flag,i k n t q,$(findstring $(flag),$(make_mode_letters)))),)
 $(error CI gates do not support --ignore-errors (-i), --keep-going (-k), --dry-run (-n), --touch (-t), or --question (-q))
+endif
 endif
 
 COMPOSE ?= docker compose

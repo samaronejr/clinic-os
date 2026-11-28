@@ -156,7 +156,7 @@ def test_make_cannot_dispatch_after_pidfd_refusal(
     assert not (tmp_path / "dispatched").exists()
 
 
-@pytest.mark.parametrize("target", ["ci-browser-contract", "ci-image-contracts"])
+@pytest.mark.parametrize("target", ["ci", "ci-browser-contract", "ci-image-contracts"])
 @pytest.mark.parametrize(
     ("makeflags", "mflags", "argv"),
     [
@@ -252,6 +252,7 @@ def _assert_make_guards(makefile: Path) -> None:
     assert MAKE_EXEMPTIONS.keys() <= recipes.keys(), "stale Make gate exemption"
     for target, recipe in recipes.items():
         if GATE_RECIPE.fullmatch(recipe):
+            _assert_make_scope(makefile, target)
             continue
         assert target in MAKE_EXEMPTIONS, f"unguarded Make target: {target}"
         command, reason = MAKE_EXEMPTIONS[target]
@@ -259,6 +260,31 @@ def _assert_make_guards(makefile: Path) -> None:
         assert not WORKLOAD.search(recipe.replace(command, "", 1)), (
             f"unguarded workload in {target} ({reason})"
         )
+
+
+def _assert_make_scope(makefile: Path, target: str) -> None:
+    # -n must fail for every discovered gate, but remain available for ordinary
+    # recipes. Set MAKE explicitly so recursive commands could not execute.
+    for goals in ((target,), (f".DEFAULT_GOAL={target}",), ("db-inputs",)):
+        status, _, stderr = asyncio.run(
+            _run(
+                "/usr/bin/make",
+                "-n",
+                "-f",
+                str(makefile),
+                *goals,
+                "POSTGRES_CONTAINER=inventory",
+                "UV=false",
+                "MAKE=false",
+                cwd=makefile.parent,
+                env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+            )
+        )
+        if goals == ("db-inputs",):
+            assert status == 0, stderr
+        else:
+            assert status == 2, f"Make guard scope omits {target}: {goals}"
+            assert "CI gates do not support" in stderr
 
 
 def _assert_workflow_guards(workflow: Path) -> None:
@@ -290,6 +316,17 @@ def test_inventory_rejects_new_make_test_target(tmp_path: Path) -> None:
         + "\n.PHONY: unguarded-test\nunguarded-test:\n\tpytest -q tests\n"
     )
     with pytest.raises(AssertionError, match="unguarded Make target: unguarded-test"):
+        _assert_make_guards(makefile)
+
+
+def test_inventory_rejects_new_make_gate_outside_flag_scope(tmp_path: Path) -> None:
+    makefile = tmp_path / "Makefile"
+    _ = makefile.write_text(
+        (ROOT / "Makefile").read_text() + "\n.PHONY: unscoped-gate\nunscoped-gate:\n"
+        "\t$(UV) run --frozen --no-sync --no-env-file python -m "
+        "ops.testing.ci_local image\n"
+    )
+    with pytest.raises(AssertionError, match="Make guard scope omits unscoped-gate"):
         _assert_make_guards(makefile)
 
 
